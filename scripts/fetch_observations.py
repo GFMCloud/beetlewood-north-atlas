@@ -176,9 +176,11 @@ def main(argv):
     old_n = (old.get("meta") or {}).get("total_obs", 0)
     new_n = fresh["meta"]["total_obs"]
 
+    # report the STORED life-list size, not the pre-union local - build() folds farm_taxa in
     print(f"\nobservations: {old_n} -> {new_n}   "
           f"species: {(old.get('meta') or {}).get('total_species')} -> {fresh['meta']['total_species']}   "
-          f"life taxa: {len(old.get('life_taxa') or [])} -> {len(life_taxa)}")
+          f"life taxa: {len(old.get('life_taxa') or [])} -> {len(fresh['life_taxa'])} "
+          f"({len(life_taxa)} from species_counts + farm records folded in)")
 
     if new_n == 0:
         sys.exit("ERROR: refusing to write an empty farm_data.json")
