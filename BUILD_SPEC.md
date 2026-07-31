@@ -377,6 +377,12 @@ Still unverified:
    the weekly cron commits refreshed JSON back. Wrong here, the workflow runs green, commits
    nothing, and the site quietly stops updating. This is the nastiest of the three.
 
+**Tool permissions.** `.claude/settings.json` pre-approves the build loop - Python, the read
+tools, and the git commands up to `commit` - with `defaultMode: "acceptEdits"` so file edits
+do not prompt. `git push`, `gh repo create` and anything else that publishes is deliberately
+**not** on the allowlist, so those still ask. The build should run uninterrupted; making
+something public should not.
+
 **No MCP connector is required.** The iNat API is public read over plain HTTP with no auth.
 If something proposes adding a connector or an API key for iNaturalist, it has not read §5.
 

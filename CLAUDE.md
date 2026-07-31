@@ -33,13 +33,19 @@ The job now is assembling one single page app from these pieces and shipping it.
    "photo offline" fallback. Keep that fallback.
 2. **Edit templates, never generated HTML.** `scripts/templates/*.html` -> `build_pages.py`
    -> `explore/*.html`. Hand edits to the output are overwritten.
-3. **Palette is fixed and validated.** Reference the `--c-<Class>` custom properties, never
+3. **Do not read the big generated files - read the templates.** `explore/sunburst-zoom.html`
+   is 646 KB, `explorer-2pane.html` 376 KB, `wireframe/index.html` 466 KB, and almost all of
+   that is inlined JSON and vendored D3 you already have in `data/` and `scripts/vendor/`.
+   Opening one whole burns a large slice of context on a blob you can query with two lines of
+   Python. Read `scripts/templates/*.html` instead - same two views, ~20 KB each, no data. For
+   the wireframe, grep out the structure rather than reading it end to end.
+4. **Palette is fixed and validated.** Reference the `--c-<Class>` custom properties, never
    raw hex. Colour follows the iconic class, never the rank. BUILD_SPEC §9 is the complete
    chart convention - there is no `dataviz` skill in this repo, so do not go hunting for one.
-4. **No credentials, ever.** The iNat API is public read and needs none.
-5. **Totals must reconcile.** `build_tree.py` asserts every parent equals the sum of its
+5. **No credentials, ever.** The iNat API is public read and needs none.
+6. **Totals must reconcile.** `build_tree.py` asserts every parent equals the sum of its
    children. Do not relax those assertions to make a change pass.
-6. **Show evidence.** Screenshots, console error checks, command output. Graham wants proof,
+7. **Show evidence.** Screenshots, console error checks, command output. Graham wants proof,
    not assertions of success. Push back if a direction looks wrong. BUILD_SPEC §13 lists the
    prerequisites, including the headless browser the screenshots need - install it before you
    need it rather than skipping verification when it is missing.
