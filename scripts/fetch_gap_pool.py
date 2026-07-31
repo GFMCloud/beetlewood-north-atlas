@@ -166,7 +166,12 @@ def main():
             "pool_size": len(pool),
             "complete": args.max_pages is None,
         },
-        "pool": sorted(pool, key=lambda p: -p["count"]),
+        # Tie-break on name, not just count. Sorting on count alone leaves species with
+        # equal counts in whatever order the API happened to return them, and the median
+        # count in this pool is 1 - so most of the file is ties. The result churned on
+        # every run even when not a single record had changed, which meant the weekly cron
+        # committed noise every week and the "nothing changed" guard could never fire.
+        "pool": sorted(pool, key=lambda p: (-p["count"], p["name"])),
     })
 
     print(f"\npool: {len(pool)} species   without a resolved family: {unresolved}")

@@ -145,4 +145,19 @@ jobs:
 
           Automated. Re-pulled from the iNaturalist API, rebuilt the atlas, verified it
           renders. Reconciliation assertions passed before this was committed."
-          git push
+
+          # Rebase before pushing. A plain push fails outright if anything landed on master
+          # since this run checked out - observed for real when two dispatches overlapped
+          # and the second was rejected with "fetch first". A weekly cron will rarely race
+          # itself, but it races a human pushing at the wrong moment just as easily, and
+          # the failure mode is a run that did all its work and threw it away.
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected, rebasing onto origin/master (attempt $attempt)"
+            git pull --rebase origin master || exit 1
+          done
+          echo "could not push after 3 attempts"
+          exit 1
