@@ -13,7 +13,10 @@
 # the automatic GITHUB_TOKEN, used to push the refreshed data back.
 name: Weekly refresh
 
-on:
+# Quoted deliberately. Unquoted `on:` is the YAML 1.1 boolean-true gotcha, so ruby and
+# pyyaml parse this key as `true` rather than "on" - which makes every local linting or
+# validation script quietly look at the wrong key. GitHub accepts either form.
+"on":
   schedule:
     # 06:12 UTC every Sunday. Off the hour on purpose - the top of the hour is when every
     # other cron on GitHub fires and runs get queued.
