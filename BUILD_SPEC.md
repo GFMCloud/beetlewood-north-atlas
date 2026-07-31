@@ -18,8 +18,11 @@ Griffin, GA (lat 33.18, lng -84.20). Roy is Graham's dad.
 (`NEARBY_RADIUS_KM`). Both live in `scripts/inat.py`. Conflating them inflates every headline
 figure on the site by 25% - see §11.
 
-Farm subset: **1,393 observations, 950 species, 2023-2026, 75% research grade**, heavily
-skewed to insects (Insecta 1,090 obs; then Plantae 147, Aves 78, a long tail). His full
+Farm subset as of the 2026-07-30 snapshot: **1,393 observations, 950 species, 2023-2026,
+75% research grade**, heavily skewed to insects (Insecta 1,090 obs; then Plantae 147,
+Aves 78, a long tail). **These figures move on every refresh** - a 2026-07-31 dry run
+already read 1,405 / 955. Treat every count in this document as a dated snapshot, not an
+invariant. The invariant is that the totals reconcile, which `build_tree.py` asserts. His full
 account is 8,287 observations across several countries - **do not treat the account as the
 farm.**
 
@@ -298,7 +301,7 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
 - The farm boundary is a lat/lng radius, not an official iNat place, so a few edge records
   are approximate.
 - "Species" as distinct `scientific_name` runs slightly higher than iNat's leaf species count.
-  The reconciled figure is `tree_data.json`'s 950 leaves.
+  The reconciled figure is whatever `tree_data.json` reports as leaves (950 at the snapshot).
 - `life_taxa` is the authoritative life list count and `meta.life_list_species` is now derived
   from it. An older snapshot had 4,754 ids against a hand set 4,739 - fixed by construction,
   not by editing a number.
@@ -329,8 +332,10 @@ Still unverified:
 
 Before calling any change done:
 
-- `python3 scripts/build_tree.py` - reconciliation assertions pass, 1,393 obs / 950 leaves /
-  1,930 taxa.
+- `python3 scripts/build_tree.py` - **the reconciliation assertions pass**. Do not check the
+  printed counts against 1,393 / 950 / 1,930; those are the 2026-07-30 snapshot and Roy is
+  actively logging. What must hold is that every parent equals the sum of its children and
+  the root equals `meta.total_obs`.
 - `python3 scripts/build_interest.py` - classes, families and genera all scored, coverage
   reported.
 - `python3 scripts/build_pages.py` - offline safety assertions pass.

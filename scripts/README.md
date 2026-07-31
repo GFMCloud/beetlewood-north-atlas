@@ -36,8 +36,8 @@ publishes an empty atlas. `--dry-run` pulls and diffs without writing.
 **1. `fetch_taxonomy.py`** - the CSV and `farm_data.json` carry only iconic class, genus and
 scientific name, which cannot express *Insecta -> Coleoptera -> Cerambycidae -> Typocerus ->
 Typocerus velutinus*. `GET /v1/taxa/ID1,ID2,...` returns each taxon's full ancestor chain.
-952 farm taxa, 30 per call, ~32 calls, ~40 seconds. Result: 952/952 resolved, 951 with order,
-947 with family. Cached - a re-run after new species only fetches the new taxa; `--force`
+About 950 farm taxa, 30 per call, ~32 calls, ~40 seconds. At the snapshot: 952/952 resolved,
+951 with order, 947 with family. Cached - a re-run after new species only fetches the new taxa; `--force`
 refetches everything.
 
 **2. `build_interest.py`** - scores how interested Roy is in each group, at class, family and
@@ -46,7 +46,8 @@ never to a date baked into the data. Also emits the family multiplier the gap ra
 BUILD_SPEC §7 explains why a multiplier rather than a family score replacing the class score.
 
 **3. `build_tree.py`** - folds observations plus ancestry into the hierarchy every view
-renders. Current output: 1,393 observations, 950 leaves, 1,930 taxa across 5 ranks.
+renders. Output at the 2026-07-30 snapshot was 1,393 observations, 950 leaves, 1,930 taxa
+across 5 ranks; the counts grow as Roy logs. What matters is that the assertions pass.
 
 **4. `fetch_gap_pool.py`** - every research grade species recorded within the radius, with
 counts, plus resolved order and family names. Ancestor names come from `taxonomy.json` where

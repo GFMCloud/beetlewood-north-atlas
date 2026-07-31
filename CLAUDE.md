@@ -9,7 +9,8 @@ drifted into contradicting each other.
 
 An interactive atlas over Roy F Morris II's (`roymorrisii`, user_id 764712) iNaturalist
 records, scoped to his ~6 acre farm in Griffin, GA. Roy is Graham's dad, an entomologist who
-specialises in longhorn beetles. Farm subset: 1,393 observations / 950 species / 2023-2026.
+specialises in longhorn beetles. Farm subset: ~1,400 observations / ~950 species / 2023-2026, and growing - he logs actively,
+so treat any exact count in the docs as a dated snapshot.
 His full account is 8,287 obs across several countries - **the account is not the farm**.
 
 ## State

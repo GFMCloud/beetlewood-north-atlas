@@ -62,6 +62,7 @@ not the code.
 - Farm: 376 Lamar County Line Rd, Griffin, GA - lat 33.18, lng -84.20, **2 km scope**.
   All 1,393 records sit within 0.64 km of centre; the next cluster is ~10 km out.
 - Nearby scope, for the gap pool only: 15 km, which holds 1,807 research-grade species.
-- Farm subset: 1,393 observations, 950 species, 2023-2026, 75% research grade.
-- Full account (not the farm): 8,287 observations, 4,276 species, several countries.
+- Farm subset (2026-07-30 snapshot, grows on every refresh): 1,393 observations,
+  950 species, 2023-2026, 75% research grade.
+- Full account (not the farm): ~8,300 observations, 4,276 species, several countries.
 - iNat API v1, base `https://api.inaturalist.org/v1`, no auth, CORS open, ~60 req/min.

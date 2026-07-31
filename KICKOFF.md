@@ -51,8 +51,9 @@ Build in this order, showing me the result at each step before moving on:
 4. **Deploy** to GitHub Pages and give me the URL.
 
 Guardrails: no credentials anywhere, the iNat API needs none. Show evidence - screenshots of
-each tab, console error checks, and confirm the pipeline's reconciliation assertions still
-pass (1,393 obs / 950 leaves / 1,930 taxa). BUILD_SPEC §12 lists what has never been verified
+each tab, console error checks, and confirm the pipeline's reconciliation
+assertions still pass. Do not assert specific totals - Roy is actively logging and the counts
+move every refresh; what must hold is that parents equal the sum of their children. BUILD_SPEC §12 lists what has never been verified
 against the live API; check those rather than assuming. §13 is the verification checklist.
 Push back if any step looks wrong.
 
