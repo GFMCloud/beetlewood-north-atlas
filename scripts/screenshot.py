@@ -81,7 +81,17 @@ def main():
 
             for name, tab in shots:
                 if tab:
-                    page.click(f"[data-tab='{tab}']")
+                    # A real click first, so a tab covered by an overlay still fails. Nested
+                    # controls (the Tree of Life view toggle lives inside its own panel) are
+                    # hidden until their panel is active, and DOM order means we reach them
+                    # after some other panel is showing - fall back to dispatching the click
+                    # through the DOM, which their handler self-heals from by activating the
+                    # containing tab.
+                    sel = f"[data-tab='{tab}']"
+                    try:
+                        page.click(sel, timeout=2000)
+                    except Exception:
+                        page.eval_on_selector(sel, "e => e.click()")
                     page.wait_for_timeout(args.settle)
                 page.screenshot(path=str(SHOTS / f"{name}.png"))
 
