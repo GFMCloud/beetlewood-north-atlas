@@ -26,7 +26,21 @@ FARM_NAME = "Beetlewood Farms North"
 PLACE_GUESS = "376 Lamar County Line Rd, Griffin, GA"
 LAT = 33.18
 LNG = -84.20
-RADIUS_KM = 15          # iNat's `radius` parameter is in kilometres
+
+# TWO DIFFERENT SCOPES. Conflating them silently redefines what "the farm" means.
+#
+#   FARM_RADIUS_KM   - the property itself. Every one of his 1,393 farm records sits within
+#                      0.64 km of the centre (bbox 0.55 x 0.32 km), and the next cluster of
+#                      his records is ~10 km away, so anything in [0.7, 9] returns exactly
+#                      the same 1,393. 2 km sits in the middle of that gap with margin on
+#                      both sides. Measured, not guessed - see BUILD_SPEC section 11.
+#   NEARBY_RADIUS_KM - "what other people record around here", for the gap pool only.
+#                      Deliberately wide. 15 km returns 1,807 research-grade species.
+#
+# Using 15 km for the farm pulls in 1,747 observations instead of 1,393 - a 25% inflation
+# of every headline number on the site, from a different site entirely.
+FARM_RADIUS_KM = 2
+NEARBY_RADIUS_KM = 15   # iNat's `radius` parameter is in kilometres
 
 BATCH = 30              # API hard limit for /taxa/ID1,ID2,...
 DELAY = 1.1             # ~55 req/min, under the ~60/min limit

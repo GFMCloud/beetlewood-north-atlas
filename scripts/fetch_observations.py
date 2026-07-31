@@ -5,7 +5,7 @@ This is the step that makes the weekly refresh real. Every other script in the
 pipeline *reads* farm_data.json; without this one, nothing new that Roy logs ever
 reaches the atlas and the site silently freezes at whatever snapshot shipped.
 
-    GET /v1/observations?user_login=..&lat=..&lng=..&radius=15   (his farm subset)
+    GET /v1/observations?user_login=..&lat=..&lng=..&radius=2    (his farm subset)
     GET /v1/observations/species_counts?user_login=..            (his whole life list)
 
 The CSV export in data/ is kept only as a historical reference. iNat generates CSV
@@ -21,7 +21,7 @@ Usage:
 Writes data/farm_data.json:
     meta          farm identity, scope, totals, quality split, year range
     observations  [{d m y cls g sci com tid q img url}, ...]
-    life_taxa     every taxon id anywhere in his account  (gap list: true lifers)
+    life_taxa     every species he has recorded anywhere  (gap list: true lifers)
     farm_taxa     every taxon id inside the farm scope    (gap list: new-to-farm)
 
 Interest scores are NOT written here - they live in data/interest.json, produced by
@@ -33,6 +33,7 @@ import sys
 import inat
 
 SHRINK_GUARD = 0.90     # fail if a refresh loses more than 10% of observations
+GROWTH_WARN = 1.25      # warn if it gains more than 25% - usually means the scope moved
 
 
 def photo_url(o):
@@ -52,7 +53,7 @@ def fetch_farm_observations():
     while True:
         payload = inat.get("/observations", {
             "user_login": inat.USER_LOGIN,
-            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.RADIUS_KM,
+            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.FARM_RADIUS_KM,
             "per_page": inat.PER_PAGE,
             "order_by": "id", "order": "asc", "id_above": cursor,
         })
@@ -86,7 +87,14 @@ def fetch_farm_observations():
 
 
 def fetch_life_taxa():
-    """Every taxon id he has recorded anywhere - the 'true lifer' subtraction set."""
+    """Species he has recorded anywhere - the 'true lifer' subtraction set.
+
+    species_counts rolls up to species-rank leaves, so this returns ~4,276 rather than the
+    4,754 distinct taxon_ids in the CSV export. The 478 difference is genus- and
+    family-level IDs, which can never match an entry in the gap pool because that pool is
+    also a species_counts rollup. Both sides of the subtraction are species-rank, which is
+    what makes it apples to apples.
+    """
     ids, page = [], 1
     while True:
         payload = inat.get("/observations/species_counts", {
@@ -113,7 +121,7 @@ def build(observations, life_taxa, asof):
         "meta": {
             "farm_name": inat.FARM_NAME,
             "place_guess": inat.PLACE_GUESS,
-            "lat": inat.LAT, "lng": inat.LNG, "radius_km": inat.RADIUS_KM,
+            "lat": inat.LAT, "lng": inat.LNG, "radius_km": inat.FARM_RADIUS_KM,
             "generated": asof.isoformat(),
             "total_obs": len(observations),
             "total_species": len({o["sci"] for o in observations if o["sci"]}),
@@ -132,12 +140,12 @@ def build(observations, life_taxa, asof):
 def main(argv):
     if "--check" in argv:
         inat.check("/observations", {"user_login": inat.USER_LOGIN, "lat": inat.LAT,
-                                     "lng": inat.LNG, "radius": inat.RADIUS_KM})
+                                     "lng": inat.LNG, "radius": inat.FARM_RADIUS_KM})
         inat.check("/observations/species_counts", {"user_login": inat.USER_LOGIN})
         return 0
 
     asof = datetime.date.today()
-    print(f"farm observations for {inat.USER_LOGIN} within {inat.RADIUS_KM} km "
+    print(f"farm observations for {inat.USER_LOGIN} within {inat.FARM_RADIUS_KM} km "
           f"of {inat.LAT},{inat.LNG}")
     observations = fetch_farm_observations()
     print(f"life list (whole account)")
@@ -154,6 +162,10 @@ def main(argv):
 
     if new_n == 0:
         sys.exit("ERROR: refusing to write an empty farm_data.json")
+    if old_n and new_n > old_n * GROWTH_WARN:
+        print(f"\nWARNING: observation count jumped {old_n} -> {new_n}. A jump this large is "
+              f"usually a scope change, not a month of logging. Confirm FARM_RADIUS_KM "
+              f"({inat.FARM_RADIUS_KM} km) is still right before publishing.")
     if old_n and new_n < old_n * SHRINK_GUARD and "--allow-shrink" not in argv:
         sys.exit(f"ERROR: observation count dropped from {old_n} to {new_n} "
                  f"(>{int((1 - SHRINK_GUARD) * 100)}%). This usually means the API or the "

@@ -38,7 +38,7 @@ Build in this order, showing me the result at each step before moving on:
    wireframe uses raw hex and needs converting to tokens.
 
 2. **Gap checklist, real data.** Run `fetch_gap_pool.py` first and look at the numbers before
-   building the view. Follow BUILD_SPEC §7 exactly, including the `family_multiplier` weight -
+   building the view - the pool is 1,807 species and his life list is 4,276. Follow BUILD_SPEC §7 exactly, including the `family_multiplier` weight -
    the obvious `family_interest ?? class_interest` rule is a known bug that inverts the
    ranking, and §7 explains why. `COUNT_EXP` is an open calibration; start at 0.5, show me the
    top 30 rows, and we will tune it together.

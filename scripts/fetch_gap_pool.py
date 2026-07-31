@@ -36,7 +36,7 @@ def fetch_pool(max_pages=None):
     pool, page = [], 1
     while True:
         payload = inat.get("/observations/species_counts", {
-            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.RADIUS_KM,
+            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.NEARBY_RADIUS_KM,
             "quality_grade": "research",
             "per_page": inat.COUNTS_PER_PAGE, "page": page,
         })
@@ -120,11 +120,11 @@ def main():
 
     if args.check:
         inat.check("/observations/species_counts", {
-            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.RADIUS_KM,
+            "lat": inat.LAT, "lng": inat.LNG, "radius": inat.NEARBY_RADIUS_KM,
             "quality_grade": "research"})
         return
 
-    print(f"nearby research-grade species within {inat.RADIUS_KM} km of "
+    print(f"nearby research-grade species within {inat.NEARBY_RADIUS_KM} km of "
           f"{inat.LAT},{inat.LNG}")
     pool = fetch_pool(args.max_pages)
     unresolved = resolve_ancestors(pool)
@@ -137,7 +137,7 @@ def main():
 
     inat.save("gap_pool.json", {
         "meta": {
-            "lat": inat.LAT, "lng": inat.LNG, "radius_km": inat.RADIUS_KM,
+            "lat": inat.LAT, "lng": inat.LNG, "radius_km": inat.NEARBY_RADIUS_KM,
             "quality_grade": "research",
             "generated": datetime.date.today().isoformat(),
             "pool_size": len(pool),

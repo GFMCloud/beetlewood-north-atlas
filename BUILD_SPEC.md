@@ -11,7 +11,12 @@ into contradicting each other on every locked decision.
 An interactive atlas over one iNaturalist observer's records, scoped to a single property.
 Roy F Morris II (`roymorrisii`, user_id 764712) is an entomologist specialising in longhorn
 beetles; the property is his ~6 acre farm "Beetlewood Farms North", 376 Lamar County Line Rd,
-Griffin, GA (lat 33.18, lng -84.20, 15 km working radius). Roy is Graham's dad.
+Griffin, GA (lat 33.18, lng -84.20). Roy is Graham's dad.
+
+**Two scopes, and they are not the same number.** The farm itself is a 2 km radius
+(`FARM_RADIUS_KM`); "what other people record nearby", used only for the gap pool, is 15 km
+(`NEARBY_RADIUS_KM`). Both live in `scripts/inat.py`. Conflating them inflates every headline
+figure on the site by 25% - see §11.
 
 Farm subset: **1,393 observations, 950 species, 2023-2026, 75% research grade**, heavily
 skewed to insects (Insecta 1,090 obs; then Plantae 147, Aves 78, a long tail). His full
@@ -36,6 +41,8 @@ farm.**
   `log1p(obs)+log1p(species)` metric is gone.
 - **Observations are refetched from the API every run** (§5 step 0). This is what makes the
   weekly refresh real.
+- **Farm scope is a 2 km radius, verified against the export** (§11). The 15 km figure that
+  appeared in earlier drafts was the nearby-species radius, not the farm.
 - **Dropped:** the icicle view (deleted), the radial tree and force directed brain map
   (`archive/explorations.html`, kept for reference only), the old sunburst tab in the
   wireframe. No in browser "Refresh now" button in v1.
@@ -52,8 +59,9 @@ Assemble one cohesive single page app, wire the live data, ship it.
    - **Seasonal Calendar** - phenology heatmap + accumulation (from the wireframe).
    - **What He Logs** - the interest profile, now reading `data/interest.json` (§6).
    - **Gap Checklist** - real data (§7).
-2. **Gap checklist.** `fetch_gap_pool.py` exists and is written but **has never been run
-   against the live API** (§12). Run it first, look at the numbers, then build the view.
+2. **Gap checklist.** `fetch_gap_pool.py` has been probed with `--check` but never run in
+   full (§12). Run it, look at the numbers, then build the view. The pool is 1,807 nearby
+   research-grade species against his 4,276 recorded species.
 3. **Refresh automation.** Weekly Actions cron running the 5 step pipeline, committing
    refreshed JSON + rebuilt pages.
 4. **Deploy** and hand Graham the URL.
@@ -269,6 +277,13 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
 
 ## 11. Data caveats - respect these
 
+- **The farm is a 2 km radius, not 15 km.** Measured from the export: all 1,393 farm records
+  sit inside a 0.55 x 0.32 km box, no more than 0.64 km from the centre. His next cluster of
+  records is ~10 km away, so any radius in [0.7, 9] km returns exactly the same 1,393
+  observations; 2 km sits in the middle of that gap. Pulling at 15 km returns **1,747**
+  observations - roughly 350 records from a different site, a 25% inflation of every headline
+  number. Earlier drafts of this spec specified `radius=15` for the observations refresh. That
+  was wrong and would have silently redefined what "the farm" means on the first cron run.
 - **The top level of the tree is `iconic_taxon_name`, not the taxonomic class.** 178 of 1,393
   observations have a real class that differs from the iconic label - Plantae -> Magnoliopsida
   (110), Fungi -> Agaricomycetes (19), and others - and the fold skips the class rank
@@ -288,21 +303,25 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
   from it. An older snapshot had 4,754 ids against a hand set 4,739 - fixed by construction,
   not by editing a number.
 
-## 12. Not yet verified - do this before trusting it
+## 12. Verified against the live API, 2026-07-31
 
-The iNat API is CORS open and needs no auth, but it is **blocked from sandboxed CI-like
-environments**. It could not be reached during this reconciliation, so:
+Both `--check` probes were run from Graham's machine. Results:
 
-- `fetch_observations.py` and `fetch_gap_pool.py` compile and are written against the
-  documented API, but **neither has ever executed against the live service.** Run `--check`
-  on each first; it costs one request and prints the response shape.
-- The gap pool size is unknown. Nobody has confirmed how many nearby species survive
-  subtracting his 4,754 life taxa. If that number is small the Gap Checklist does not deserve
-  a tab, and that changes the plan - check it before building the view.
-- `species_counts` is assumed to return `taxon.ancestor_ids`. `fetch_gap_pool.py` depends on
-  it for family and order resolution. `--check` prints whether it is present.
-- The observation count from a live pull is assumed to match the 1,393 snapshot (plus
-  whatever Roy has logged since). `--dry-run` diffs without writing.
+- **`species_counts` returns `taxon.ancestor_ids`.** Confirmed present. The family and order
+  resolution in `fetch_gap_pool.py` works as designed.
+- **Gap pool: 1,807 research-grade species within 15 km.** Comfortably enough to justify the
+  tab. The exact gap count needs the full pull and the subtraction.
+- **His life list via `species_counts` is 4,276 species**, not the 4,754 in the snapshot. The
+  478 difference is genus- and family-rank IDs from the CSV export, which can never match a
+  pool entry because the pool is also a species rollup. Both sides of the subtraction are now
+  species rank, which is what makes it valid.
+- **The retry path works.** One probe hit "Remote end closed connection without response" and
+  recovered on retry 1 of 3.
+
+Still unverified:
+
+- Neither network script has run a **full** pull yet, only `--check`. Use `--dry-run` on
+  `fetch_observations.py` first; it pulls and diffs without writing.
 - Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
   first scheduled run needs eyes on it, not an assumption.
 

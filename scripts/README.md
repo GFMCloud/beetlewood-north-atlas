@@ -14,6 +14,10 @@ python3 scripts/build_pages.py          # 5. inline   -> explore/*.html         
 Steps 2, 3 and 5 are offline and run in well under a second, so iterating on visuals never
 needs the API. `inat.py` is a shared helper, not a step.
 
+**Two scopes live in `inat.py` and must not be conflated:** `FARM_RADIUS_KM = 2` is the
+property, `NEARBY_RADIUS_KM = 15` is the gap pool's "around here". Pulling the farm at 15 km
+returns 1,747 observations instead of 1,393.
+
 Both network scripts take `--check`: one tiny request that prints the response shape. Run it
 before a full pull - it is the cheapest way to catch a changed endpoint.
 
