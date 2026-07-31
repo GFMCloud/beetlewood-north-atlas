@@ -78,3 +78,7 @@ not the code.
   4,276 from `species_counts` and 4,381 once farm records are folded in - both correct, see
   BUILD_SPEC §11.
 - iNat API v1, base `https://api.inaturalist.org/v1`, no auth, CORS open, ~60 req/min.
+- **This repo is public and must stay free of the iNat CSV export.** An own-account export
+  carries true coordinates for obscured records - 87 of his, 5 on the farm, including a
+  yellow fringed orchid and an eastern box turtle. `.gitignore` blocks `*.csv`; the export
+  lives outside the repo. The built site exposes only the farm centre. BUILD_SPEC §11.

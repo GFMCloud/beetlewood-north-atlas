@@ -3,3 +3,12 @@ __pycache__/
 .DS_Store
 shots/
 *.tar.gz
+
+# NEVER COMMIT THE iNat CSV EXPORT. An own-account export carries private_latitude,
+# private_longitude and private_place_guess, populated for every observation iNaturalist
+# obscures - 87 of Roy's, including a yellow fringed orchid and an eastern box turtle on
+# the farm itself. This repo is PUBLIC so Pages will serve it. The export was purged from
+# history on 2026-07-31; it lives outside the repo at ../observations764712.csv and no
+# script reads it. See BUILD_SPEC section 11.
+data/observations*.csv
+*.csv

@@ -26,7 +26,9 @@ before a full pull - it is the cheapest way to catch a changed endpoint.
 **0. `fetch_observations.py`** - rebuilds `farm_data.json` from the live API. Without this
 step nothing new Roy logs ever reaches the atlas: every other script reads `farm_data.json`
 and none of them produce it, so the whole site would silently freeze at whatever snapshot was
-committed. The CSV export in `data/` is reference only - iNat generates exports on request
+committed. The CSV export is reference only and **deliberately not in this repo** - it
+carries obscured-species coordinates and `.gitignore` blocks `*.csv` (BUILD_SPEC §11). iNat
+generates exports on request
 and emails them, so CI cannot fetch one.
 
 Guards: refuses to write an empty file, and refuses a drop of more than 10% in observation

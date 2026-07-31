@@ -102,7 +102,9 @@ scripts/           the pipeline (see scripts/README.md)
   templates/         tpl_explorer.html, tpl_sunburst.html, tpl_atlas.html
   vendor/            d3.v7.min.js (v7.9.0)
 data/              farm_data.json, taxonomy.json, interest.json, tree_data.json,
-                   gap_pool.json, taxa_cache.json, observations764712.csv (reference only)
+                   gap_pool.json, taxa_cache.json
+                   NO CSV HERE - the export carries obscured-species coordinates and is
+                   gitignored and kept outside the repo. See §11.
 explore/           explorer-2pane.html, sunburst-zoom.html  (GENERATED)
                    still shipped as standalone single-view pages
 shots/             screenshot.py output - gitignored, not part of the product
@@ -397,8 +399,22 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
 - 69 records are partial IDs (genus or family only), kept as explicit `stub` nodes
   ("Scutellaria sp.", "Curculionidae (undetermined)") so totals reconcile. Do not clean them
   away - the leaf count drops to 881 and the numbers stop adding up.
-- 87 observations are coordinate obscured (threatened taxa). Minor, but relevant if a map
-  view is ever added.
+- **The CSV export must never be committed, and this repo is public.** An own-account iNat
+  export carries `private_latitude`, `private_longitude` and `private_place_guess`, and they
+  are populated for every record iNaturalist obscures: **87 across his account, 5 of them on
+  the farm** - *Platanthera ciliaris* (yellow fringed orchid) and *Terrapene carolina
+  carolina* (eastern box turtle). Obscuring exists to stop exactly those being collected, so
+  republishing the true coordinates would undo it. `data/observations764712.csv` was purged
+  from git history on 2026-07-31, before the first push; it lives outside the repo at
+  `../observations764712.csv` and `.gitignore` blocks `*.csv`. No script reads it - it was
+  always reference only. Earlier drafts of this document filed the 87 as a minor farm caveat
+  relevant "if a map view is ever added" and asserted in §13 that all his data was already
+  public. Both were wrong, and together they would have shipped the file.
+- **What the built site does expose:** the farm centre, `33.18, -84.20`, and nothing else.
+  No per-observation coordinates exist in any of the four JSONs - `farm_data.json`
+  observations carry `d m y cls g sci com tid q img url`. Verify before any future push:
+
+      python3 -c "import re,pathlib; print(sorted(set(re.findall(r'\"(?:lat|lng)\":(-?\d+\.?\d*)', pathlib.Path('index.html').read_text()))))"
 - The farm boundary is a lat/lng radius, not an official iNat place, so a few edge records
   are approximate.
 - "Species" as distinct `scientific_name` runs slightly higher than iNat's leaf species count.
@@ -468,7 +484,8 @@ Still unverified:
 
 **Three GitHub settings that fail silently if wrong:**
 
-1. **Repo must be public** or free Pages will not serve it. Roy's iNat data is already public.
+1. **Repo must be public** or free Pages will not serve it. His *observations* are already
+   public, but **his CSV export is not** - see the warning below before you push anything.
 2. **Pages source = "Deploy from a branch."** An Actions-based Pages deploy never fires,
    because a push made with the default `GITHUB_TOKEN` does not trigger other workflows.
 3. **Actions workflow permissions = read and write.** Some account defaults are read-only, and
