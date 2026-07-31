@@ -21,8 +21,10 @@ Usage:
 Writes data/farm_data.json:
     meta          farm identity, scope, totals, quality split, year range
     observations  [{d m y cls g sci com tid q img url}, ...]
-    life_taxa     every species he has recorded anywhere  (gap list: true lifers)
-    farm_taxa     every taxon id inside the farm scope    (gap list: new-to-farm)
+    life_taxa     every taxon id he has recorded anywhere (gap list: true lifers)
+    life_names    the same set as scientific names, to survive iNat taxon id changes
+    farm_taxa     every taxon id inside the farm scope     (gap list: new-to-farm)
+    farm_names    the same set as scientific names
 
 Interest scores are NOT written here - they live in data/interest.json, produced by
 build_interest.py, so there is exactly one definition of "interest" in the project.
@@ -87,36 +89,52 @@ def fetch_farm_observations():
 
 
 def fetch_life_taxa():
-    """Species he has recorded anywhere - the 'true lifer' subtraction set.
+    """What he has already recorded, as both ids and names.
 
-    species_counts rolls up to species-rank leaves, so this returns ~4,276 rather than the
-    4,754 distinct taxon_ids in the CSV export. The 478 difference is genus- and
-    family-level IDs, which can never match an entry in the gap pool because that pool is
-    also a species_counts rollup. Both sides of the subtraction are species-rank, which is
-    what makes it apples to apples.
+    Returns (ids, names). BOTH are needed, because matching on taxon id alone produces
+    false gaps two different ways - measured against the real 840-gap list:
+
+      - **Rank rollup.** species_counts returns leaf taxa at whatever rank is finest, so
+        a genus he has recorded (Xanthotype) can be absent from his own rollup while
+        present in the nearby pool. Unioning in farm_taxa covers the local case.
+      - **Taxon id drift.** iNat splits and merges taxa, so an observation keeps the id it
+        was made under. Hericium erinaceus is id 1520823 in his records and 49158 in the
+        pool - same fungus, two ids, and it showed up as a gap he had already logged.
+        Matching on scientific name as well catches this.
+
+    Neither is exotic: 2 of 840 gaps were false on the first real run. That is a small
+    number and exactly the kind that makes Roy stop trusting the list.
     """
-    ids, page = [], 1
+    ids, names, page = [], [], 1
     while True:
         payload = inat.get("/observations/species_counts", {
             "user_login": inat.USER_LOGIN,
             "per_page": inat.COUNTS_PER_PAGE, "page": page,
         })
         results = payload.get("results") or []
-        ids.extend(r["taxon"]["id"] for r in results if r.get("taxon"))
+        for r in results:
+            taxon = r.get("taxon") or {}
+            if taxon.get("id"):
+                ids.append(taxon["id"])
+            if taxon.get("name"):
+                names.append(taxon["name"])
         print(f"  species_counts page {page}: +{len(results)} "
               f"(total_results={payload.get('total_results')})", flush=True)
         if len(results) < inat.COUNTS_PER_PAGE:
             break
         page += 1
-    return sorted(set(ids))
+    return sorted(set(ids)), sorted(set(names))
 
 
-def build(observations, life_taxa, asof):
+def build(observations, life_taxa, life_names, asof):
     years = [o["y"] for o in observations]
     quality = {}
     for o in observations:
         quality[o["q"]] = quality.get(o["q"], 0) + 1
     farm_taxa = sorted({o["tid"] for o in observations})
+    # fold his own farm records into the lifer sets - see fetch_life_taxa()
+    life_taxa = sorted(set(life_taxa) | set(farm_taxa))
+    life_names = sorted(set(life_names) | {o["sci"] for o in observations if o["sci"]})
     return {
         "meta": {
             "farm_name": inat.FARM_NAME,
@@ -133,7 +151,9 @@ def build(observations, life_taxa, asof):
         },
         "observations": sorted(observations, key=lambda o: (o["d"], o["sci"])),
         "life_taxa": life_taxa,
+        "life_names": life_names,
         "farm_taxa": farm_taxa,
+        "farm_names": sorted({o["sci"] for o in observations if o["sci"]}),
     }
 
 
@@ -149,9 +169,9 @@ def main(argv):
           f"of {inat.LAT},{inat.LNG}")
     observations = fetch_farm_observations()
     print(f"life list (whole account)")
-    life_taxa = fetch_life_taxa()
+    life_taxa, life_names = fetch_life_taxa()
 
-    fresh = build(observations, life_taxa, asof)
+    fresh = build(observations, life_taxa, life_names, asof)
     old = inat.load("farm_data.json") or {}
     old_n = (old.get("meta") or {}).get("total_obs", 0)
     new_n = fresh["meta"]["total_obs"]
@@ -177,6 +197,7 @@ def main(argv):
         return 0
 
     inat.save("farm_data.json", fresh)
+    print(f"api requests this run: {inat.requests_made()}")
     print("\nnext: fetch_taxonomy.py -> build_interest.py -> build_tree.py -> build_pages.py")
     return 0
 

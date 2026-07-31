@@ -7,8 +7,10 @@ Rate limit is ~60 req/min and <10k/day, so every caller goes through get() which
 paces itself at DELAY seconds and retries transient failures 3x.
 """
 import json
+import random
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -42,18 +44,45 @@ LNG = -84.20
 FARM_RADIUS_KM = 2
 NEARBY_RADIUS_KM = 15   # iNat's `radius` parameter is in kilometres
 
+# ── rate limits, per https://www.inaturalist.org/pages/api+recommended+practices ──
+# iNat asks for "about 1 per second, and around 10k API requests a day". Over that you get
+# HTTP 429, and they may block IPs that consistently exceed it. Their forum has repeated
+# reports of 429s at exactly 60/min, with ~55/min given as the safe target - which is where
+# DELAY lands before latency is even counted. Do not lower it to speed a run up.
 BATCH = 30              # API hard limit for /taxa/ID1,ID2,...
-DELAY = 1.1             # ~55 req/min, under the ~60/min limit
+DELAY = 1.1             # ~55 req/min, deliberately under the ~60/min cliff
+MAX_RETRIES = 5
+BACKOFF_BASE = 4        # seconds; doubles each attempt, plus jitter
+BACKOFF_CAP = 120
+REQUEST_BUDGET_WARN = 1000   # a full cold run is ~100; 1000 means something loops per-record
+
+_requests = {"n": 0}
 PER_PAGE = 200          # max for /observations
 COUNTS_PER_PAGE = 500   # max for /observations/species_counts
 
 
-def get(path, params=None, retries=3, pace=True):
-    """GET {API}{path}?{params} as JSON, with retries and rate-limit pacing."""
+def get(path, params=None, retries=MAX_RETRIES, pace=True):
+    """GET {API}{path}?{params} as JSON, with rate-limit pacing and backoff.
+
+    Retries are exponential with jitter rather than a flat sleep, for two reasons the
+    original flat 3s could not handle:
+
+      - A 429 means we are already going too fast. iNat explicitly asks you to add delays
+        when you see one. Retrying 3s later three times makes it worse, not better. If the
+        response carries Retry-After we honour it exactly.
+      - A local network drop (DNS failure, wifi handover) routinely lasts longer than 9s.
+        A three minute pull should ride that out, not die and discard its work.
+    """
     url = API + path
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
+    _requests["n"] += 1
+    if _requests["n"] == REQUEST_BUDGET_WARN:
+        print(f"\n  WARNING: {REQUEST_BUDGET_WARN} API requests in one run. A full cold run "
+              f"is ~100. This usually means something is looping per-record instead of "
+              f"batching 30 at a time. iNat's daily allowance is ~10k.\n",
+              file=sys.stderr, flush=True)
     last = None
     for attempt in range(retries):
         try:
@@ -62,11 +91,38 @@ def get(path, params=None, retries=3, pace=True):
             if pace:
                 time.sleep(DELAY)
             return payload
-        except Exception as e:                      # noqa: BLE001 - report and retry
+        except urllib.error.HTTPError as e:
             last = e
-            print(f"  retry {attempt + 1}/{retries}: {e}", file=sys.stderr, flush=True)
-            time.sleep(3)
+            if e.code == 429:
+                wait = None
+                try:
+                    wait = float(e.headers.get("Retry-After") or 0) or None
+                except (TypeError, ValueError):
+                    wait = None
+                wait = wait or min(BACKOFF_CAP, BACKOFF_BASE * 2 ** attempt)
+                print(f"  429 Too Many Requests - backing off {wait:.0f}s "
+                      f"(attempt {attempt + 1}/{retries})", file=sys.stderr, flush=True)
+                time.sleep(wait)
+                continue
+            if 400 <= e.code < 500 and e.code != 408:
+                raise RuntimeError(f"GET {url} -> HTTP {e.code} {e.reason}. "
+                                   f"Client error, not retrying.") from e
+            wait = min(BACKOFF_CAP, BACKOFF_BASE * 2 ** attempt) + random.uniform(0, 2)
+            print(f"  HTTP {e.code}, retry {attempt + 1}/{retries} in {wait:.0f}s",
+                  file=sys.stderr, flush=True)
+            time.sleep(wait)
+        except Exception as e:                      # noqa: BLE001 - network/DNS/timeout
+            last = e
+            wait = min(BACKOFF_CAP, BACKOFF_BASE * 2 ** attempt) + random.uniform(0, 2)
+            print(f"  retry {attempt + 1}/{retries} in {wait:.0f}s: {e}",
+                  file=sys.stderr, flush=True)
+            time.sleep(wait)
     raise RuntimeError(f"GET {url} failed after {retries} attempts: {last}")
+
+
+def requests_made():
+    """Total API calls this process has made. Print it at the end of every fetcher."""
+    return _requests["n"]
 
 
 def check(path, params=None):
@@ -99,11 +155,12 @@ def load(name, default=None):
     return default
 
 
-def save(name, obj):
+def save(name, obj, quiet=False):
     p = DATA / name
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(obj, separators=(",", ":")))
-    print(f"wrote data/{name} ({p.stat().st_size // 1024} KB)")
+    if not quiet:
+        print(f"wrote data/{name} ({p.stat().st_size // 1024} KB)")
     return p
 
 

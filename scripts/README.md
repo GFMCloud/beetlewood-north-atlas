@@ -82,8 +82,19 @@ merged page. Keep new ids prefixed; BUILD_SPEC §8 has the detail and the smoke 
 
 Running the offline steps on unchanged inputs reproduces the shipped files byte identically.
 
+## Rate limits
+
+iNaturalist asks for "about 1 per second, and around 10k API requests a day", and warns that
+over 5 GB of media an hour may result in a permanent block. `DELAY = 1.1` s in `inat.py` puts
+us at ~55 req/min - their forum has repeated 429 reports at exactly 60/min, so the margin is
+deliberate. **Do not lower it to speed a run up.** A full cold run is ~100 requests; a warm
+weekly one is a handful. `get()` honours `Retry-After` on a 429 and backs off exponentially
+otherwise. BUILD_SPEC section 15 has the full policy and where we knowingly deviate.
+
+Every fetcher caches, and `fetch_gap_pool.py` checkpoints every 10 batches, so a dropped
+connection costs one batch rather than the whole run. Re-run and it resumes.
+
 ## No credentials
 
 The API is public read. There are no tokens, keys or logins anywhere in this pipeline, and
-none should ever be added. Rate limits (~60 req/min, <10k/day) are respected by 30 id
-batching and a 1.1 s pace, both centralised in `inat.py`.
+none should ever be added.

@@ -6,10 +6,10 @@
 Every research-grade species recorded in range, with how often. Subtracting Roy's
 own taxa from this pool is the Gap Checklist.
 
-Each result carries taxon.ancestor_ids but not ancestor *names*, so order and family
-names are resolved by (i) reusing anything already in data/taxonomy.json, and
-(ii) a batched /taxa lookup for the rest, cached in data/taxa_cache.json so re-runs
-only fetch genuinely new ancestors.
+species_counts gives ids but not ancestor names, so a second pass fetches each pool
+species from /taxa (30 per call) and reads the `ancestors` array it already carries.
+Results are cached in data/taxa_cache.json and checkpointed every 10 batches, so a
+dropped connection costs one batch and a re-run resumes where it stopped.
 
 Usage:
     python3 scripts/fetch_gap_pool.py --check      # 1 request, prints the response shape
@@ -65,50 +65,66 @@ def fetch_pool(max_pages=None):
     return pool
 
 
-def resolve_ancestors(pool):
-    """Fill order/family names for every pool entry, fetching only unknown ids."""
+def resolve_ranks(pool, checkpoint_every=10):
+    """Fill order/family names for every pool entry.
+
+    Fetches the POOL SPECIES themselves, 30 at a time, and reads the `ancestors` array
+    each /taxa record already carries - the same trick fetch_taxonomy.py uses. The earlier
+    approach collected every distinct ancestor id across the pool and looked those up
+    instead, which meant 5,348 ids / 179 requests to learn 2 ranks per species. Going
+    through the species directly is ~60 requests, because one record answers both ranks at
+    once and anything already in taxonomy.json is free.
+
+    Progress is checkpointed to taxa_cache.json every `checkpoint_every` batches, so a
+    dropped connection costs one batch rather than the whole run. Re-running resumes.
+    """
     taxonomy = inat.load("taxonomy.json", {})
     cache = inat.load("taxa_cache.json", {})
 
-    # seed the cache from ancestry already resolved for the farm's own taxa
-    for entry in taxonomy.values():
-        for rank, value in (entry.get("chain") or {}).items():
-            if rank in RANKS_WANTED and value:
-                cache.setdefault(str(value[1]), {"rank": rank, "name": value[0]})
+    # anything already resolved for the farm's own taxa is free
+    seeded = 0
+    for tid, entry in taxonomy.items():
+        if tid in cache:
+            continue
+        chain = entry.get("chain") or {}
+        cache[tid] = {r: (chain.get(r) or [""])[0] for r in RANKS_WANTED}
+        seeded += 1
 
-    wanted = set()
-    for p in pool:
-        for aid in p["ancestor_ids"]:
-            if str(aid) not in cache:
-                wanted.add(aid)
-    wanted = sorted(wanted)
-    print(f"ancestor ids: {len(cache)} cached, {len(wanted)} to fetch")
+    todo = [p["tid"] for p in pool if str(p["tid"]) not in cache]
+    print(f"rank resolution: {len(cache)} cached ({seeded} reused from taxonomy.json), "
+          f"{len(todo)} to fetch in {(len(todo) + inat.BATCH - 1) // inat.BATCH} batches")
 
-    for i in range(0, len(wanted), inat.BATCH):
-        batch = wanted[i:i + inat.BATCH]
+    for i in range(0, len(todo), inat.BATCH):
+        batch = todo[i:i + inat.BATCH]
         payload = inat.get("/taxa/" + ",".join(str(b) for b in batch))
         for t in payload.get("results", []):
-            cache[str(t["id"])] = {"rank": t.get("rank"), "name": t.get("name")}
+            names = {}
+            for a in t.get("ancestors", []):
+                if a.get("rank") in RANKS_WANTED:
+                    names[a["rank"]] = a.get("name") or ""
+            cache[str(t["id"])] = {r: names.get(r, "") for r in RANKS_WANTED}
         for b in batch:                       # remember misses so we stop re-asking
-            cache.setdefault(str(b), {"rank": None, "name": None})
-        print(f"  taxa batch {i // inat.BATCH + 1}/"
-              f"{(len(wanted) + inat.BATCH - 1) // inat.BATCH}", flush=True)
+            cache.setdefault(str(b), {r: "" for r in RANKS_WANTED})
 
-    if wanted:
-        inat.save("taxa_cache.json", cache)
+        n = i // inat.BATCH + 1
+        total = (len(todo) + inat.BATCH - 1) // inat.BATCH
+        if n % checkpoint_every == 0 or i + inat.BATCH >= len(todo):
+            inat.save("taxa_cache.json", cache, quiet=True)
+            print(f"  batch {n}/{total} (checkpointed)", flush=True)
+        else:
+            print(f"  batch {n}/{total}", flush=True)
+
+    if todo or seeded:
+        inat.save("taxa_cache.json", cache, quiet=True)
 
     unresolved = 0
     for p in pool:
-        names = {}
-        for aid in p["ancestor_ids"]:
-            entry = cache.get(str(aid)) or {}
-            if entry.get("rank") in RANKS_WANTED and entry.get("name"):
-                names[entry["rank"]] = entry["name"]
-        p["order"] = names.get("order", "")
-        p["family"] = names.get("family", "")
+        entry = cache.get(str(p["tid"])) or {}
+        p["order"] = entry.get("order", "")
+        p["family"] = entry.get("family", "")
         if not p["family"]:
             unresolved += 1
-        p.pop("ancestor_ids")
+        p.pop("ancestor_ids", None)
     return unresolved
 
 
@@ -127,13 +143,20 @@ def main():
     print(f"nearby research-grade species within {inat.NEARBY_RADIUS_KM} km of "
           f"{inat.LAT},{inat.LNG}")
     pool = fetch_pool(args.max_pages)
-    unresolved = resolve_ancestors(pool)
+    unresolved = resolve_ranks(pool)
 
     farm = inat.load("farm_data.json") or {}
     life = set(farm.get("life_taxa") or [])
+    life_names = set(farm.get("life_names") or [])
     farm_taxa = set(farm.get("farm_taxa") or [])
-    not_lifers = sum(1 for p in pool if p["tid"] not in life)
-    not_on_farm = sum(1 for p in pool if p["tid"] not in farm_taxa)
+    farm_names = set(farm.get("farm_names") or [])
+
+    def is_gap(p, ids, names):
+        # id OR name - see fetch_observations.fetch_life_taxa() for why both are needed
+        return p["tid"] not in ids and p["name"] not in names
+
+    not_lifers = sum(1 for p in pool if is_gap(p, life, life_names))
+    not_on_farm = sum(1 for p in pool if is_gap(p, farm_taxa, farm_names))
 
     inat.save("gap_pool.json", {
         "meta": {
@@ -151,6 +174,7 @@ def main():
     print(f"not yet recorded on the farm:       {not_on_farm}")
     if not_lifers < 50:
         print("WARNING: very few gaps - check the scope before building a tab around this")
+    print(f"api requests this run: {inat.requests_made()}")
 
 
 if __name__ == "__main__":

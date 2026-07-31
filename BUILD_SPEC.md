@@ -165,12 +165,21 @@ coverage{}           observations, without_family, without_genus
 
 ```
 pool  = gap_pool.json
-seen  = life_taxa (true lifers)  |  farm_taxa (new to farm)   -- user toggle
-gaps  = pool where tid NOT in seen
+seen  = (life_taxa, life_names)  |  (farm_taxa, farm_names)   -- user toggle
+gaps  = pool where tid NOT in seen_ids AND name NOT in seen_names
 
 weight(g) = interest.class[g.iconic] * family_multiplier[g.family]   (default 1.0)
 rank(g)   = weight(g) * log1p(g.count) ** COUNT_EXP
 ```
+
+**Match on id AND name.** Matching ids alone produced 2 false gaps out of 840 on the first
+real run, both worth understanding because they are structural, not flukes. `Xanthotype` is a
+genus he has recorded; `species_counts` rolls up to the finest rank available, so it can be
+absent from his own rollup while present in the pool - the fix is unioning `farm_taxa` into
+`life_taxa`. `Hericium erinaceus` carries id 1520823 in his records and 49158 in the pool,
+because iNat splits and merges taxa and an observation keeps the id it was made under - the
+fix is matching scientific name as a second key. Earlier drafts of this spec claimed both
+sides were species-rank rollups and therefore directly comparable. That was wrong.
 
 **Why a multiplier and not `family_interest ?? class_interest`.** The obvious rule is wrong,
 and wrong in the worst direction. Family scores are normalised among families and class
@@ -188,21 +197,29 @@ and any floor below 1.0 means logging a family once penalises it relative to nev
 touched it. Measured after the fix: 133/133 logged insect families at or above baseline,
 Cerambycidae 11th of 133 at weight 180.9 against a 94.0 baseline, Buprestidae at 94.8.
 
-**`COUNT_EXP` is an open calibration, not a settled number.** Abundance and interest are on
-different scales too. With `COUNT_EXP = 1.0` a common weed recorded 180 times nearby outranks
-a missing longhorn recorded 12 times, which contradicts the stated intent of the feature.
-Worked numbers on real weights:
+**`COUNT_EXP`, calibrated against the real pool (2026-07-31).** The nearby counts turn out to
+be tiny: across 840 gaps the median is **1** and the maximum is **26**. The worked example in
+earlier drafts assumed a weed with 180 nearby records dominating a longhorn with 12. No such
+species exists here. `log1p` over a 1-26 range spans 0.69 to 3.30, about 4.8x, against a
+weight range of roughly 47-185, about 4x - so the two terms are already comparable and the
+"abundance drowns interest" worry does not materialise on this data.
 
-| COUNT_EXP | longhorn (Cerambycidae, 12 nearby) | common weed (Asteraceae, 180 nearby) |
+What the exponent actually controls is how insect-heavy the top of the list is:
+
+| COUNT_EXP | insects in top 50 | beetles in top 50 |
 |---|---|---|
-| 1.00 | 464 | 732 |
-| 0.50 | 290 | 321 |
-| 0.25 | 229 | 213 |
+| 1.00 | 32 | 8 |
+| 0.50 | 38 | 7 |
+| 0.25 | 48 | 7 |
 
-Start at **0.5** and re-calibrate once the real pool exists - the honest answer needs the
-actual count distribution, which nobody has yet. If the ordering still reads wrong to Roy,
-the group filter (Coleoptera only) is the intended way to get to his beetles, not a heavier
-weight. Say so in the UI rather than pretending the global sort does it.
+**Ship 0.5.** At 0.25 the list is 48/50 insects, which loses the genuinely useful "you have
+somehow never logged this common thing" signal; at 1.0 it drifts plant-heavy. Note the beetle
+count barely moves either way - there simply are not many nearby research-grade beetle records
+he has missed, because he is the local authority. Getting to beetles is the group filter's
+job, not the sort's. Say that in the UI rather than implying the global ranking does it.
+
+The raw gap mix is Plantae 343, Insecta 259, Fungi 132, Arachnida 44, and a long tail - so the
+interest weighting is doing real work to surface insects from a plant-majority pool.
 
 UI, ported from the wireframe mock: scope (radius now, Spalding County as a second pass -
 county needs a `place_id` from `/places/autocomplete`), not-yet-logged (anywhere -> subtract
@@ -357,3 +374,48 @@ implementations of the first two.
   every moth photographed that evening.
 - Per species phenology (emergence weeks rather than class x month), a within property map
   view, a 2023-2026 time scrubber, a Cerambycidae focus mode, and "new this year" highlighting.
+
+## 15. Rate limits and fair use
+
+From iNaturalist's [API Recommended Practices](https://www.inaturalist.org/pages/api+recommended+practices),
+checked 2026-07-31. These are their words, not our guesses:
+
+- **"about 1 per second, and around 10k API requests a day."** Over that returns HTTP 429,
+  and "we may block IPs that consistently exceed these limits."
+- **"Downloading over 5 GB of media per hour or 24 GB of media per day may result in a
+  permanent block."**
+- **"Please use a single IP address for fetching data."**
+- A custom User-Agent identifying the application is requested.
+- For bulk data they would rather you use an observation export or the weekly GBIF dataset
+  than many API requests.
+
+How this project complies:
+
+- `DELAY = 1.1` s in `inat.py`, i.e. ~55 req/min before latency. Their forum carries repeated
+  reports of 429s at exactly 60/min with ~55 given as the safe target, so the margin is
+  deliberate. **Do not lower DELAY to make a run faster.**
+- Request budget per full run: ~17 for observations and the life list, ~32 for taxonomy on a
+  cold cache (5 on a warm one), ~50 for gap pool ranks on a cold cache, 4 for the pool
+  itself. Roughly 100 cold, a handful warm. Against 10k/day that is negligible - but it is
+  the reason no script should ever loop per-record instead of per-batch.
+- `get()` honours `Retry-After` on a 429 and otherwise backs off exponentially with jitter,
+  capped at 120 s, 5 attempts. A 4xx that is not 429 fails immediately rather than retrying
+  into a wall.
+- Every fetcher caches and checkpoints, so re-runs cost near zero. This is a rate-limit
+  measure as much as a convenience one.
+
+**Media bandwidth is the limit with real teeth, and it is the one this design touches.** The
+pages hotlink taxon photos directly from iNat's S3 bucket rather than caching them, so every
+page load draws on their media bandwidth rather than ours. At Roy-and-Graham scale that is
+irrelevant. If this URL ever circulates in a naturalist group it stops being irrelevant, and
+the penalty is a permanent block, not throttling. If traffic ever becomes non-trivial, cache
+the thumbnails into the repo at build time instead.
+
+**Known deviation:** they ask for a single fetching IP; GitHub Actions runners rotate. Our
+weekly volume is ~100 requests, so this is noted rather than mitigated. If it ever matters,
+move the refresh to a fixed-IP runner.
+
+**Their preference for exports over the API is acknowledged and deliberately not followed**
+for observations: iNat generates CSV exports on request and emails them, which CI cannot
+automate. The API is the only automatable source. Our volume is ordinary API use, not bulk
+extraction.
