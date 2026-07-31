@@ -1,0 +1,335 @@
+# Beetlewood Farms North Atlas - Build Spec
+
+**Single source of truth.** Decisions, data model, formulas, hosting, caveats. Reconciled
+2026-07-31; `HANDOFF.md` was folded in here and archived because the two files had drifted
+into contradicting each other on every locked decision.
+
+---
+
+## 1. The project
+
+An interactive atlas over one iNaturalist observer's records, scoped to a single property.
+Roy F Morris II (`roymorrisii`, user_id 764712) is an entomologist specialising in longhorn
+beetles; the property is his ~6 acre farm "Beetlewood Farms North", 376 Lamar County Line Rd,
+Griffin, GA (lat 33.18, lng -84.20, 15 km working radius). Roy is Graham's dad.
+
+Farm subset: **1,393 observations, 950 species, 2023-2026, 75% research grade**, heavily
+skewed to insects (Insecta 1,090 obs; then Plantae 147, Aves 78, a long tail). His full
+account is 8,287 observations across several countries - **do not treat the account as the
+farm.**
+
+## 2. Locked decisions
+
+- **Audience: a tool Roy actually uses.** Utility and currency over gift polish. The gap
+  checklist is a first class feature.
+- **Roy is non technical and Windows only.** Anything he operates is a browser URL. Never a
+  shell, script or Python run. All builds run in CI.
+- **Data strategy: hybrid.** Pre baked JSON committed to the repo for instant offline safe
+  load, plus a weekly automated refresh. Nothing is fetched on page load.
+- **Tree of Life is one tab with an Explorer <-> Sunburst toggle.** Not two tabs.
+- **Hosting: GitHub Pages under the `gfmcloud` account, repo `beetlewood-north-atlas`,
+  Pages in "deploy from a branch" mode**, refreshed by a weekly GitHub Actions cron.
+  Branch mode is not a detail: a workflow commit made with the default `GITHUB_TOKEN` does
+  **not** trigger other workflows, so an Actions based Pages deploy would never fire and the
+  site would silently stop updating. Default URL, no custom domain.
+- **Interest is one formula at three ranks** (§6). The old genus level
+  `log1p(obs)+log1p(species)` metric is gone.
+- **Observations are refetched from the API every run** (§5 step 0). This is what makes the
+  weekly refresh real.
+- **Dropped:** the icicle view (deleted), the radial tree and force directed brain map
+  (`archive/explorations.html`, kept for reference only), the old sunburst tab in the
+  wireframe. No in browser "Refresh now" button in v1.
+
+## 3. What to build now
+
+Assemble one cohesive single page app, wire the live data, ship it.
+
+1. **Atlas shell.** One self contained SPA, template generated through `build_pages.py`.
+   Tabs:
+   - **Overview** - stat tiles + species accumulation curve (from `wireframe/index.html`).
+   - **Tree of Life** - Explorer <-> Sunburst toggle. Port both `explore/` views into this
+     one tab. See §8 for what is already done to make them mergeable and what is not.
+   - **Seasonal Calendar** - phenology heatmap + accumulation (from the wireframe).
+   - **What He Logs** - the interest profile, now reading `data/interest.json` (§6).
+   - **Gap Checklist** - real data (§7).
+2. **Gap checklist.** `fetch_gap_pool.py` exists and is written but **has never been run
+   against the live API** (§12). Run it first, look at the numbers, then build the view.
+3. **Refresh automation.** Weekly Actions cron running the 5 step pipeline, committing
+   refreshed JSON + rebuilt pages.
+4. **Deploy** and hand Graham the URL.
+
+## 4. Repo layout
+
+```
+CLAUDE.md          auto-loaded pointer + hard rules
+README.md          human orientation
+BUILD_SPEC.md      this file - the source of truth
+KICKOFF.md         the prompt to paste into Claude Code
+scripts/           the pipeline (see scripts/README.md)
+  inat.py                shared API helpers + the farm scope constants
+  fetch_observations.py  step 0  (network)
+  fetch_taxonomy.py      step 1  (network)
+  build_interest.py      step 2  (offline)
+  build_tree.py          step 3  (offline)
+  fetch_gap_pool.py      step 4  (network)
+  build_pages.py         step 5  (offline)
+  templates/         tpl_explorer.html, tpl_sunburst.html
+  vendor/            d3.v7.min.js (v7.9.0)
+data/              farm_data.json, taxonomy.json, interest.json, tree_data.json,
+                   gap_pool.json (after step 4), observations764712.csv (reference only)
+explore/           explorer-2pane.html, sunburst-zoom.html  (GENERATED)
+wireframe/         index.html - prototype, source material for 3 tabs
+archive/           explorations.html - radial tree + brain map, not in the product
+```
+
+## 5. The pipeline
+
+| step | script | in -> out | network |
+|---|---|---|---|
+| 0 | `fetch_observations.py` | iNat API -> `data/farm_data.json` | yes |
+| 1 | `fetch_taxonomy.py` | farm_data -> `data/taxonomy.json` (ancestry) | yes |
+| 2 | `build_interest.py` | farm + taxonomy -> `data/interest.json` | no |
+| 3 | `build_tree.py` | farm + taxonomy -> `data/tree_data.json` | no |
+| 4 | `fetch_gap_pool.py` | iNat API -> `data/gap_pool.json` | yes |
+| 5 | `build_pages.py` | tree + D3 -> `explore/*.html` | no |
+
+Run in that order. Conventions the pipeline enforces and you must keep:
+
+- 30 id batches, ~1.1 s pace, retries. All of it lives in `scripts/inat.py`; use it rather
+  than writing new HTTP code.
+- **The farm scope constants live in `inat.py` and nowhere else.** Do not re-hardcode
+  lat/lng/radius/user in a script or a template.
+- `fetch_observations.py` refuses to write an empty file and refuses a >10% drop in
+  observation count without `--allow-shrink`. That guard is the difference between a cron
+  that fails loudly and one that quietly publishes an empty atlas.
+- `build_tree.py` asserts every parent equals the sum of its children and that the root
+  equals `meta.total_obs`.
+- `build_pages.py` asserts no external `<script src>` and no web storage survive inlining,
+  **before** writing the file.
+- Templates use `/*__DATA__*/` and `/*__D3__*/` placeholders. Edit templates, never the
+  generated HTML.
+- Every network script takes `--check`: one tiny request that prints the response shape.
+  Use it before committing to a full pull.
+
+## 6. Interest scoring - one formula, three ranks
+
+Computed by `build_interest.py` into `data/interest.json`.
+
+```
+effort      = observation count
+depth       = distinct species
+recency     = fraction of observations in the last 365 days, anchored to --asof
+persistence = distinct months of the year present
+
+normalise each 0..1 across peers in the same grouping (effort and depth on log1p), then
+interest = 100 * (0.35*effort + 0.30*depth + 0.20*recency + 0.15*persistence)
+```
+
+Applied three times: classes ranked against classes, families against families, genera
+against genera. **A score is only comparable within its own grouping.** That is not a
+technicality - ignoring it is what produced the ranking bug described in §7.
+
+Two things that must not regress:
+
+- **Recency is anchored to the run date** (`--asof`, default today). A frozen anchor stops
+  decaying the moment the cron starts running, and nothing would surface the drift.
+- **There is one definition of "interest".** Earlier snapshots shipped a second, undocumented
+  one at genus level (`log1p(obs)+log1p(species)`, scale 1.4-5.0) alongside the 0-100 class
+  score. Both were called "interest" and they were not comparable. `class_interest` and
+  `genus_interest` have been removed from `farm_data.json`; `interest.json` is the only
+  source. Verified: the class scores this formula produces reproduce the old shipped values
+  exactly, so nothing visible changed at class level.
+
+`interest.json` shape:
+
+```
+asof, recent_days, weights{}, mult_span_lo
+class{}   family{}   genus{}      each: {obs, species, recent_frac, months, years, interest}
+family_class{}       family -> the iconic class its records sit under
+family_multiplier{}  family -> the gap weight multiplier (§7)
+coverage{}           observations, without_family, without_genus
+```
+
+## 7. Gap checklist
+
+```
+pool  = gap_pool.json
+seen  = life_taxa (true lifers)  |  farm_taxa (new to farm)   -- user toggle
+gaps  = pool where tid NOT in seen
+
+weight(g) = interest.class[g.iconic] * family_multiplier[g.family]   (default 1.0)
+rank(g)   = weight(g) * log1p(g.count) ** COUNT_EXP
+```
+
+**Why a multiplier and not `family_interest ?? class_interest`.** The obvious rule is wrong,
+and wrong in the worst direction. Family scores are normalised among families and class
+scores among classes, so the two scales never meet: measured on the real data, Insecta scores
+94.0 while the single best represented family tops out at 91.0. Under the `??` rule **all 133
+of his insect families ranked below the baseline of a family he has never touched** -
+Cerambycidae, his own speciality, landed at 63.9 against a 94.0 baseline. The gap list would
+have systematically demoted exactly what it exists to surface.
+
+The multiplier form fixes it. `family_multiplier` is `MULT_SPAN_LO + percentile of the family
+within its own class`, with **`MULT_SPAN_LO` pinned at 1.0**. An unlogged family has no
+multiplier and sits at the class baseline; a logged family can only score at or above it.
+The floor matters: 112 of his 248 families have exactly one record (Buprestidae among them),
+and any floor below 1.0 means logging a family once penalises it relative to never having
+touched it. Measured after the fix: 133/133 logged insect families at or above baseline,
+Cerambycidae 11th of 133 at weight 180.9 against a 94.0 baseline, Buprestidae at 94.8.
+
+**`COUNT_EXP` is an open calibration, not a settled number.** Abundance and interest are on
+different scales too. With `COUNT_EXP = 1.0` a common weed recorded 180 times nearby outranks
+a missing longhorn recorded 12 times, which contradicts the stated intent of the feature.
+Worked numbers on real weights:
+
+| COUNT_EXP | longhorn (Cerambycidae, 12 nearby) | common weed (Asteraceae, 180 nearby) |
+|---|---|---|
+| 1.00 | 464 | 732 |
+| 0.50 | 290 | 321 |
+| 0.25 | 229 | 213 |
+
+Start at **0.5** and re-calibrate once the real pool exists - the honest answer needs the
+actual count distribution, which nobody has yet. If the ordering still reads wrong to Roy,
+the group filter (Coleoptera only) is the intended way to get to his beetles, not a heavier
+weight. Say so in the UI rather than pretending the global sort does it.
+
+UI, ported from the wireframe mock: scope (radius now, Spalding County as a second pass -
+county needs a `place_id` from `/places/autocomplete`), not-yet-logged (anywhere -> subtract
+`life_taxa` | on farm -> subtract `farm_taxa`), group filter (iconic class, or `order`/`family`
+from the baked pool), min nearby count. Each row shows the weight that drove its rank. Note
+that the mock only prototypes scope and a group filter - **min nearby count and the
+group-by-iconic control do not exist in it and have to be built.**
+
+## 8. Tree of Life - merging the two views
+
+Both templates are complete standalone documents. Two things were checked directly rather
+than assumed:
+
+- **JS scope is already safe.** Both main scripts are wrapped in
+  `(function(){ "use strict"; ... })()`. Concatenating them does not throw. (An earlier
+  review claimed a redeclaration `SyntaxError` here - that was a false positive from reading
+  declarations inside the existing IIFE.)
+- **DOM ids were not safe.** `treeData`, `theme` and `hsub` were duplicated across the two
+  templates, so a merged page silently cross wired: both scripts read whichever `#treeData`
+  came first, both dark mode toggles bound to the same button. Ids are now prefixed `ex-` and
+  `sb-`. A merged smoke page renders both views simultaneously - 11 class rows and 1,930
+  sunburst paths, zero JS errors, zero duplicate ids.
+
+Still to do in assembly: shared chrome (one header, one theme toggle), CSS scoping, loading
+D3 once, and deciding which view is the default. The 20 shared CSS custom properties have
+identical values in both templates and merge cleanly. A merged page carrying both views plus
+D3 lands around 1 MB; adding the wireframe tabs and their data puts the finished SPA near
+1.5 MB, which is fine for Pages but worth knowing before you inline a fourth copy of anything.
+
+## 9. Design conventions
+
+- **Self contained, single file, offline safe.** Everything inline. No CDN, no web storage.
+  `build_pages.py` enforces it. **Honest exception:** taxon photos are remote iNat S3 URLs.
+  Opened with no network the pages render fine and photo cards show a "photo offline"
+  placeholder. Keep that fallback; do not claim the pages are fully offline without it.
+- **No web storage means the dark mode toggle cannot persist** across loads. That is a
+  deliberate trade, not an oversight. Roy will re-toggle each visit.
+- **Validated palette**, class -> colour fixed. Reference `--c-<Class>` custom properties,
+  never raw hex.
+
+  | | Insecta | Plantae | Aves | Fungi | Arachnida | Reptilia | Amphibia | Mammalia | other |
+  |---|---|---|---|---|---|---|---|---|---|
+  | light | #2a78d6 | #eb6834 | #1baf7a | #eda100 | #e87ba4 | #008300 | #4a3aa7 | #e34948 | #b7b4aa |
+  | dark  | #3987e5 | #d95926 | #199e70 | #c98500 | #d55181 | #008300 | #9085e9 | #e66767 | #6f6d64 |
+
+  The palette covers 9 buckets; his data has 11 iconic groups. Animalia, Protozoa and
+  Mollusca (5 observations between them) collapse to "other". **`wireframe/index.html` uses
+  raw hex rather than the tokens and is missing `#6f6d64` entirely** - converting it to
+  tokens is part of assembly, and is where colours will silently drift if you rush it.
+- Colour follows the class, never the rank. A filter must not repaint survivors.
+- Hover tooltips on marks, zoom/pan on big canvases, selective direct labels. Read the
+  `dataviz` skill before adding any chart.
+
+## 10. Data model
+
+**`data/farm_data.json`** - `meta`, `observations[]` with `d m y cls g sci com tid q img url`,
+`life_taxa[]`, `farm_taxa[]`. Interest blocks deliberately absent (§6).
+
+**`data/taxonomy.json`** - `{"<taxon_id>": {rank, name, common, chain}}`, chain maps each
+major rank to `[name, taxon_id]`. 952 taxa, 951 with order, 947 with family.
+
+**`data/tree_data.json`** - `{meta, tree}`. Nested node:
+
+```
+n  name              o  observation count        k  children (absent on leaves)
+r  rank              s  distinct leaves beneath   id iNat taxon_id (for deep links)
+c  iconic class      d  total descendant taxa
+leaves add:  cm common name - im photo url - u sample obs url - q research grade count
+             mo months present [1..12] - f/l first & last obs date
+```
+
+Ranks present: `root, class, order, family, genus, species`, plus `stub` and `unresolved`.
+
+**`data/gap_pool.json`** - `{meta, pool[]}` with `{tid, name, common, iconic, family, order, count}`.
+
+## 11. Data caveats - respect these
+
+- **The top level of the tree is `iconic_taxon_name`, not the taxonomic class.** 178 of 1,393
+  observations have a real class that differs from the iconic label - Plantae -> Magnoliopsida
+  (110), Fungi -> Agaricomycetes (19), and others - and the fold skips the class rank
+  entirely. So for insects the tree really is class -> order -> family -> genus -> species,
+  but for plants and fungi it is iconic -> order -> family -> genus -> species. Do not
+  describe the product as a full 5 rank phylogeny across all life; it is not.
+- 69 records are partial IDs (genus or family only), kept as explicit `stub` nodes
+  ("Scutellaria sp.", "Curculionidae (undetermined)") so totals reconcile. Do not clean them
+  away - the leaf count drops to 881 and the numbers stop adding up.
+- 87 observations are coordinate obscured (threatened taxa). Minor, but relevant if a map
+  view is ever added.
+- The farm boundary is a lat/lng radius, not an official iNat place, so a few edge records
+  are approximate.
+- "Species" as distinct `scientific_name` runs slightly higher than iNat's leaf species count.
+  The reconciled figure is `tree_data.json`'s 950 leaves.
+- `life_taxa` is the authoritative life list count and `meta.life_list_species` is now derived
+  from it. An older snapshot had 4,754 ids against a hand set 4,739 - fixed by construction,
+  not by editing a number.
+
+## 12. Not yet verified - do this before trusting it
+
+The iNat API is CORS open and needs no auth, but it is **blocked from sandboxed CI-like
+environments**. It could not be reached during this reconciliation, so:
+
+- `fetch_observations.py` and `fetch_gap_pool.py` compile and are written against the
+  documented API, but **neither has ever executed against the live service.** Run `--check`
+  on each first; it costs one request and prints the response shape.
+- The gap pool size is unknown. Nobody has confirmed how many nearby species survive
+  subtracting his 4,754 life taxa. If that number is small the Gap Checklist does not deserve
+  a tab, and that changes the plan - check it before building the view.
+- `species_counts` is assumed to return `taxon.ancestor_ids`. `fetch_gap_pool.py` depends on
+  it for family and order resolution. `--check` prints whether it is present.
+- The observation count from a live pull is assumed to match the 1,393 snapshot (plus
+  whatever Roy has logged since). `--dry-run` diffs without writing.
+- Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
+  first scheduled run needs eyes on it, not an assumption.
+
+## 13. Verification checklist
+
+Before calling any change done:
+
+- `python3 scripts/build_tree.py` - reconciliation assertions pass, 1,393 obs / 950 leaves /
+  1,930 taxa.
+- `python3 scripts/build_interest.py` - classes, families and genera all scored, coverage
+  reported.
+- `python3 scripts/build_pages.py` - offline safety assertions pass.
+- Screenshot every tab in headless Chromium and confirm no console errors other than the
+  known remote photo failures when offline.
+- Confirm the palette still comes from custom properties, not raw hex.
+
+## 14. Parked, not forgotten
+
+Explored and deliberately left out of v1. `archive/explorations.html` holds working
+implementations of the first two.
+
+- **Radial dendrogram** - a collapsible class -> genus -> species tree. Was the leading
+  candidate to replace the sunburst before the Explorer/Sunburst pair was chosen.
+- **Seasonal co-occurrence graph** - a force directed view linking genera Roy logs on the
+  same days. This shows something neither taxonomy view can: field session associations.
+  The strongest candidate for a future tab. Label it carefully if it ships - it means
+  "logged together", not "found together ecologically", and one big mothing night links
+  every moth photographed that evening.
+- Per species phenology (emergence weeks rather than class x month), a within property map
+  view, a 2023-2026 time scrubber, a Cerambycidae focus mode, and "new this year" highlighting.

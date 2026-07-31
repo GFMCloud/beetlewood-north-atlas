@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beetlewood Farms North - Taxonomy Explorer</title>
+<style>
+/* ─── Design tokens ─────────────────────────────────────────────────────────
+   Class hues are the project's validated categorical set (8 real hues + a
+   deliberate neutral for "other"). Referenced by role, never as raw hex. */
+:root{
+  --bg:#fcfcfb; --panel:#ffffff; --panel-2:#f7f6f3;
+  --line:#e6e4df; --line-soft:#efeeea;
+  --ink:#1a1a19; --ink-2:#5c5a54; --ink-3:#8a8780;
+  --accent:#2a78d6; --accent-soft:#eaf1fc;
+  --shadow:0 1px 2px rgba(26,26,25,.05), 0 8px 24px -12px rgba(26,26,25,.14);
+  --c-Insecta:#2a78d6; --c-Plantae:#eb6834; --c-Aves:#1baf7a; --c-Fungi:#eda100;
+  --c-Arachnida:#e87ba4; --c-Reptilia:#008300; --c-Amphibia:#4a3aa7;
+  --c-Mammalia:#e34948; --c-other:#b7b4aa;
+}
+html[data-theme="dark"]{
+  --bg:#1a1a19; --panel:#232322; --panel-2:#1f1f1e;
+  --line:#34342f; --line-soft:#2b2b28;
+  --ink:#f0efe9; --ink-2:#a8a59c; --ink-3:#75736b;
+  --accent:#3987e5; --accent-soft:#1e2a3b;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  --c-Insecta:#3987e5; --c-Plantae:#d95926; --c-Aves:#199e70; --c-Fungi:#c98500;
+  --c-Arachnida:#d55181; --c-Reptilia:#008300; --c-Amphibia:#9085e9;
+  --c-Mammalia:#e66767; --c-other:#6f6d64;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column;
+  transition:background .2s ease, color .2s ease;
+}
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+header{
+  flex:0 0 auto; display:flex; align-items:baseline; gap:14px;
+  padding:18px 24px 16px; border-bottom:1px solid var(--line); background:var(--panel);
+}
+h1{margin:0; font-size:17px; font-weight:600; letter-spacing:-.01em}
+.sub{font-size:13.5px; color:var(--ink-3)}
+.spacer{flex:1}
+button.ghost{
+  font:inherit; font-size:13px; color:var(--ink-2); background:transparent;
+  border:1px solid var(--line); border-radius:7px; padding:6px 12px; cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var(--ink-3)}
+/* ─── Layout ─────────────────────────────────────────────────────────────── */
+main{flex:1 1 auto; display:flex; min-height:0}
+#left{
+  flex:0 0 372px; display:flex; flex-direction:column; min-height:0;
+  border-right:1px solid var(--line); background:var(--panel);
+}
+.leftbar{padding:12px 14px; border-bottom:1px solid var(--line-soft); display:flex; gap:8px}
+#search{
+  flex:1; font:inherit; font-size:14px; color:var(--ink);
+  background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
+  padding:7px 11px; outline:none; transition:border-color .15s ease, box-shadow .15s ease;
+}
+#search:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+#search::placeholder{color:var(--ink-3)}
+#tree{flex:1 1 auto; overflow-y:auto; padding:6px 0 24px}
+/* ─── Tree rows ──────────────────────────────────────────────────────────── */
+.row{
+  display:flex; align-items:center; gap:7px; min-height:30px;
+  padding:2px 14px 2px 0; cursor:pointer; user-select:none;
+  border-left:2px solid transparent;
+  transition:background .12s ease;
+  animation:fade .18s ease both;
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.row:hover{background:var(--panel-2)}
+.row.sel{background:var(--accent-soft); border-left-color:var(--accent)}
+.chev{
+  flex:0 0 16px; width:16px; height:16px; display:grid; place-items:center;
+  color:var(--ink-3); font-size:10px; transition:transform .18s ease, color .15s ease;
+}
+.chev.open{transform:rotate(90deg)}
+.chev.leaf{visibility:hidden}
+.row:hover .chev{color:var(--ink-2)}
+.dot{flex:0 0 8px; width:8px; height:8px; border-radius:50%}
+.nm{
+  flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:14.5px;
+}
+.nm.sci{font-style:italic}
+.rk{flex:0 0 auto; font-size:11px; color:var(--ink-3); letter-spacing:.02em}
+.ct{flex:0 0 auto; font-size:12.5px; color:var(--ink-3); font-variant-numeric:tabular-nums; min-width:34px; text-align:right}
+.hit{color:var(--ink); background:var(--accent-soft); border-radius:3px}
+.empty{padding:24px 20px; color:var(--ink-3); font-size:13.5px}
+/* ─── Detail pane ────────────────────────────────────────────────────────── */
+#detail{flex:1 1 auto; overflow-y:auto; padding:26px 32px 60px; min-width:0}
+.pane{max-width:760px; animation:rise .22s ease both}
+@keyframes rise{from{opacity:0; transform:translateY(4px)}to{opacity:1; transform:none}}
+.crumb{font-size:12.5px; color:var(--ink-3); margin-bottom:14px; display:flex; flex-wrap:wrap; align-items:center; gap:5px}
+.crumb a{color:var(--ink-3); text-decoration:none; cursor:pointer; border-bottom:1px solid transparent; transition:color .15s ease, border-color .15s ease}
+.crumb a:hover{color:var(--accent); border-bottom-color:var(--accent)}
+.crumb .sep{opacity:.5}
+.title{display:flex; align-items:center; gap:10px; margin:0 0 4px}
+.swatch{width:11px; height:11px; border-radius:3px; flex:0 0 auto}
+h2{margin:0; font-size:25px; font-weight:600; letter-spacing:-.02em}
+h2.sci{font-style:italic}
+.common{font-size:15px; color:var(--ink-2); margin:0 0 2px; text-transform:capitalize}
+.chip{
+  display:inline-block; font-size:11px; letter-spacing:.03em; text-transform:uppercase;
+  color:var(--ink-2); background:var(--panel-2); border:1px solid var(--line);
+  border-radius:5px; padding:3px 8px; margin-top:10px;
+}
+/* stat row */
+.stats{display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 4px}
+.stat{
+  flex:1 1 128px; background:var(--panel); border:1px solid var(--line);
+  border-radius:9px; padding:13px 15px; box-shadow:var(--shadow);
+}
+.stat .v{font-size:23px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.stat .l{font-size:12px; color:var(--ink-3); margin-top:3px}
+h3{
+  font-size:12px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-3); margin:30px 0 12px;
+}
+/* months */
+.months{display:flex; gap:5px}
+.mo{
+  flex:1 1 0; text-align:center; font-size:11px; color:var(--ink-3);
+  padding:7px 0 6px; border-radius:6px; background:var(--panel-2);
+  border:1px solid var(--line-soft); transition:background .15s ease;
+}
+.mo.on{color:#fff; border-color:transparent; font-weight:500}
+html[data-theme="dark"] .mo.on{color:#12120f}
+/* species grid */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:12px}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:9px;
+  overflow:hidden; cursor:pointer; text-align:left;
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.card:hover{transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--ink-3)}
+.thumb{
+  width:100%; aspect-ratio:4/3; object-fit:cover; display:block;
+  background:var(--panel-2); border-bottom:1px solid var(--line-soft);
+}
+.thumb.miss{display:grid; place-items:center; color:var(--ink-3); font-size:11px}
+.cbody{padding:9px 11px 11px}
+.cname{font-size:13px; font-style:italic; line-height:1.35; word-break:break-word}
+.ccom{font-size:11.5px; color:var(--ink-3); margin-top:2px; text-transform:capitalize;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.cct{font-size:11.5px; color:var(--ink-3); margin-top:5px; font-variant-numeric:tabular-nums}
+/* links */
+.links{display:flex; flex-wrap:wrap; gap:9px; margin-top:14px}
+a.btn{
+  font-size:13px; text-decoration:none; color:var(--ink-2);
+  background:var(--panel); border:1px solid var(--line); border-radius:7px;
+  padding:8px 13px; display:inline-flex; align-items:center; gap:6px;
+  transition:border-color .15s ease, color .15s ease, background .15s ease;
+}
+a.btn:hover{color:var(--accent); border-color:var(--accent); background:var(--accent-soft)}
+a.btn .ext{opacity:.55; font-size:11px}
+.note{font-size:12.5px; color:var(--ink-3); line-height:1.55; margin-top:26px;
+  padding-top:16px; border-top:1px solid var(--line-soft); max-width:640px}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px; border:3px solid var(--panel)}
+::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Beetlewood Farms North</h1>
+  <span class="sub" id="ex-hsub"></span>
+  <span class="spacer"></span>
+  <button class="ghost" id="collapse">Collapse all</button>
+  <button class="ghost" id="ex-theme">Dark</button>
+</header>
+
+<main>
+  <div id="left">
+    <div class="leftbar">
+      <input id="search" type="search" placeholder="Search any taxon or common name" autocomplete="off" spellcheck="false">
+    </div>
+    <div id="tree"></div>
+  </div>
+  <div id="detail"></div>
+</main>
+
+<script id="ex-treeData" type="application/json">/*__DATA__*/</script>
+<script>
+(function(){
+"use strict";
+
+const DATA = JSON.parse(document.getElementById('ex-treeData').textContent);
+const ROOT = DATA.tree, META = DATA.meta;
+const SCI_RANKS = new Set(['genus','species','subspecies','subgenus','stub']);
+const RANK_LABEL = {root:'', class:'class', order:'order', family:'family',
+  genus:'genus', species:'species', subspecies:'subspecies', subgenus:'subgenus',
+  subfamily:'subfamily', tribe:'tribe', superfamily:'superfamily',
+  stub:'partial ID', unresolved:'unplaced'};
+const MONTHS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+const MONTH_FULL = ['January','February','March','April','May','June','July',
+  'August','September','October','November','December'];
+
+// ── index the tree: stable ids, parent links, leaf rollups ──────────────────
+const NODES = [];
+(function index(n, parent, depth){
+  n._i = NODES.length; n._p = parent; n._d = depth;
+  NODES.push(n);
+  (n.k || []).forEach(c => index(c, n, depth + 1));
+})(ROOT, null, 0);
+
+const kids = n => n.k || [];
+const isLeaf = n => !n.k || !n.k.length;
+const colorOf = n => `var(--c-${['Insecta','Plantae','Aves','Fungi','Arachnida','Reptilia','Amphibia','Mammalia'].includes(n.c) ? n.c : 'other'})`;
+
+function leavesOf(n, out){
+  out = out || [];
+  if (isLeaf(n)) out.push(n); else kids(n).forEach(c => leavesOf(c, out));
+  return out;
+}
+const leafCache = new Map();
+function leaves(n){
+  if (!leafCache.has(n._i)) leafCache.set(n._i, leavesOf(n));
+  return leafCache.get(n._i);
+}
+function ancestry(n){ const a = []; for (let c = n; c; c = c._p) a.unshift(c); return a; }
+
+// ── state ───────────────────────────────────────────────────────────────────
+const open = new Set([ROOT._i]);
+let selected = ROOT;
+let query = '';
+
+document.getElementById('ex-hsub').textContent =
+  `${META.total_obs.toLocaleString()} observations · ${ROOT.s.toLocaleString()} taxa recorded · ${META.year_min}–${META.year_max}`;
+
+// ── search ──────────────────────────────────────────────────────────────────
+function matchSet(q){
+  const hits = new Set(), keep = new Set();
+  const ql = q.toLowerCase();
+  for (const n of NODES){
+    if (n.n.toLowerCase().includes(ql) || (n.cm || '').toLowerCase().includes(ql)){
+      hits.add(n._i);
+      for (let c = n; c; c = c._p) keep.add(c._i);
+    }
+  }
+  return {hits, keep};
+}
+
+// ── tree rendering ──────────────────────────────────────────────────────────
+const treeEl = document.getElementById('tree');
+
+function render(){
+  const frag = document.createDocumentFragment();
+  const search = query.length >= 2 ? matchSet(query) : null;
+
+  (function walk(n){
+    for (const c of kids(n)){
+      if (search && !search.keep.has(c._i)) continue;
+      frag.appendChild(rowFor(c, search));
+      const expanded = search ? true : open.has(c._i);
+      if (expanded && !isLeaf(c)) walk(c);
+    }
+  })(ROOT);
+
+  const shown = frag.childNodes.length;   // read before the fragment is drained
+  treeEl.replaceChildren(frag);
+  if (!shown && search){
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = `Nothing matches “${query}”.`;
+    treeEl.appendChild(d);
+  }
+}
+
+function rowFor(n, search){
+  const row = document.createElement('div');
+  row.className = 'row' + (n === selected ? ' sel' : '');
+  row.style.paddingLeft = (8 + (n._d - 1) * 15) + 'px';
+  row.dataset.i = n._i;
+
+  const chev = document.createElement('span');
+  chev.className = 'chev' + (isLeaf(n) ? ' leaf' : (open.has(n._i) || search ? ' open' : ''));
+  chev.textContent = '▶';
+  row.appendChild(chev);
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = colorOf(n);
+  row.appendChild(dot);
+
+  const nm = document.createElement('span');
+  nm.className = 'nm' + (SCI_RANKS.has(n.r) ? ' sci' : '');
+  if (search && search.hits.has(n._i)) nm.appendChild(highlight(n.n, query));
+  else nm.textContent = n.n;
+  nm.title = n.n + (n.cm ? ' — ' + n.cm : '');
+  row.appendChild(nm);
+
+  const rk = document.createElement('span');
+  rk.className = 'rk';
+  rk.textContent = RANK_LABEL[n.r] || n.r;
+  row.appendChild(rk);
+
+  const ct = document.createElement('span');
+  ct.className = 'ct';
+  ct.textContent = n.o;
+  row.appendChild(ct);
+
+  chev.addEventListener('click', e => {
+    e.stopPropagation();
+    if (isLeaf(n)) return;
+    open.has(n._i) ? open.delete(n._i) : open.add(n._i);
+    query = ''; document.getElementById('search').value = '';
+    render();
+  });
+  row.addEventListener('click', () => {
+    selected = n;
+    if (!isLeaf(n)) open.add(n._i);
+    render(); detail();
+    row.scrollIntoView({block:'nearest'});
+  });
+  return row;
+}
+
+function highlight(text, q){
+  const frag = document.createDocumentFragment();
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0){ frag.appendChild(document.createTextNode(text)); return frag; }
+  frag.appendChild(document.createTextNode(text.slice(0, i)));
+  const b = document.createElement('span');
+  b.className = 'hit'; b.textContent = text.slice(i, i + q.length);
+  frag.appendChild(b);
+  frag.appendChild(document.createTextNode(text.slice(i + q.length)));
+  return frag;
+}
+
+// ── detail pane ─────────────────────────────────────────────────────────────
+const detailEl = document.getElementById('detail');
+
+function inatObsLink(n){
+  const base = 'https://www.inaturalist.org/observations?user_id=roymorrisii&lat=' +
+    META.lat + '&lng=' + META.lng + '&radius=' + META.radius_km + '&subview=grid';
+  return n.id ? base + '&taxon_id=' + n.id : base;
+}
+
+function detail(){
+  const n = selected;
+  const ls = leaves(n);
+  const months = new Set(), years = new Set();
+  let research = 0;
+  for (const l of ls){
+    (l.mo || []).forEach(m => months.add(m));
+    research += (l.q || 0);
+    if (l.f) years.add(l.f.slice(0,4));
+    if (l.l) years.add(l.l.slice(0,4));
+  }
+  const pct = n.o ? Math.round(research / n.o * 100) : 0;
+
+  const p = el('div', 'pane');
+
+  // breadcrumb
+  const cr = el('div', 'crumb');
+  ancestry(n).forEach((a, i, arr) => {
+    if (i) cr.appendChild(el('span', 'sep', '›'));
+    if (a === n) cr.appendChild(el('span', '', a.n));
+    else {
+      const link = el('a', '', a.n);
+      link.addEventListener('click', () => {
+        selected = a; ancestry(a).forEach(x => open.add(x._i)); render(); detail();
+      });
+      cr.appendChild(link);
+    }
+  });
+  p.appendChild(cr);
+
+  // title
+  const t = el('div', 'title');
+  const sw = el('span', 'swatch'); sw.style.background = colorOf(n); t.appendChild(sw);
+  const h = el('h2', SCI_RANKS.has(n.r) ? 'sci' : '', n.n);
+  t.appendChild(h);
+  p.appendChild(t);
+  if (n.cm) p.appendChild(el('p', 'common', n.cm));
+  if (n.r !== 'root') p.appendChild(el('span', 'chip', RANK_LABEL[n.r] || n.r));
+
+  // stats
+  const stats = el('div', 'stats');
+  stats.appendChild(stat(n.o.toLocaleString(), n.o === 1 ? 'observation' : 'observations'));
+  if (!isLeaf(n)){
+    stats.appendChild(stat(n.s.toLocaleString(), n.s === 1 ? 'taxon recorded' : 'taxa recorded'));
+    stats.appendChild(stat(n.d.toLocaleString(), 'descendants in tree'));
+  } else {
+    stats.appendChild(stat(monthRange(n), 'recorded'));
+  }
+  stats.appendChild(stat(pct + '%', 'research grade'));
+  p.appendChild(stats);
+
+  // months
+  p.appendChild(el('h3', '', 'When it shows up'));
+  const mrow = el('div', 'months');
+  for (let m = 1; m <= 12; m++){
+    const c = el('div', 'mo' + (months.has(m) ? ' on' : ''), MONTHS[m-1]);
+    if (months.has(m)) c.style.background = colorOf(n);
+    c.title = MONTH_FULL[m-1] + (months.has(m) ? ' — recorded' : ' — no records');
+    mrow.appendChild(c);
+  }
+  p.appendChild(mrow);
+
+  // photo (leaf) or example species (internal)
+  if (isLeaf(n)){
+    if (n.im){
+      p.appendChild(el('h3', '', 'Photo'));
+      const fig = el('div');
+      const img = document.createElement('img');
+      img.className = 'thumb'; img.src = n.im; img.alt = n.n; img.loading = 'lazy';
+      img.style.maxWidth = '340px'; img.style.borderRadius = '9px';
+      img.style.border = '1px solid var(--line)';
+      img.addEventListener('error', () => { img.replaceWith(missing()); });
+      fig.appendChild(img);
+      p.appendChild(fig);
+    }
+    p.appendChild(el('h3', '', 'Record span'));
+    p.appendChild(el('p', 'common',
+      n.f === n.l ? fmt(n.f) : fmt(n.f) + ' – ' + fmt(n.l)));
+  } else {
+    const top = ls.slice().sort((a,b) => b.o - a.o || a.n.localeCompare(b.n)).slice(0, 12);
+    p.appendChild(el('h3', '', `Most recorded here (${Math.min(12, ls.length)} of ${ls.length})`));
+    const g = el('div', 'grid');
+    for (const l of top) g.appendChild(card(l));
+    p.appendChild(g);
+  }
+
+  // links
+  p.appendChild(el('h3', '', 'On iNaturalist'));
+  const links = el('div', 'links');
+  links.appendChild(link(inatObsLink(n), 'His records' + (n.r === 'root' ? ' on the farm' : ' for this group')));
+  if (n.id) links.appendChild(link('https://www.inaturalist.org/taxa/' + n.id, 'Taxon page'));
+  if (isLeaf(n) && n.u) links.appendChild(link(n.u, 'An example observation'));
+  p.appendChild(links);
+
+  if (n.r === 'stub'){
+    p.appendChild(el('div', 'note',
+      'These records were identified only as far as this group — no finer ID was ' +
+      'settled on. They are shown separately so the counts above reconcile with the full ' +
+      META.total_obs.toLocaleString() + ' observations.'));
+  }
+  if (n.r === 'root'){
+    p.appendChild(el('div', 'note',
+      'Ranks come from iNaturalist’s taxonomy (order, family and genus fetched live ' +
+      'from the API). The farm boundary is a bounding box around ' + META.lat + ', ' +
+      META.lng + ', not an official iNaturalist place, so a handful of records at the ' +
+      'edges are approximate.'));
+  }
+
+  detailEl.replaceChildren(p);
+  detailEl.scrollTop = 0;
+}
+
+function card(l){
+  const c = el('div', 'card');
+  if (l.im){
+    const img = document.createElement('img');
+    img.className = 'thumb'; img.src = l.im; img.alt = l.n; img.loading = 'lazy';
+    img.addEventListener('error', () => img.replaceWith(missing()));
+    c.appendChild(img);
+  } else c.appendChild(missing());
+  const b = el('div', 'cbody');
+  b.appendChild(el('div', 'cname', l.n));
+  if (l.cm) b.appendChild(el('div', 'ccom', l.cm));
+  b.appendChild(el('div', 'cct', l.o + (l.o === 1 ? ' record' : ' records')));
+  c.appendChild(b);
+  c.addEventListener('click', () => {
+    selected = l; ancestry(l).forEach(x => { if (x !== l) open.add(x._i); });
+    render(); detail();
+    const r = treeEl.querySelector('.row.sel');
+    if (r) r.scrollIntoView({block:'center'});
+  });
+  return c;
+}
+
+function missing(){ const d = el('div', 'thumb miss', 'photo offline'); return d; }
+function stat(v, l){ const s = el('div','stat'); s.appendChild(el('div','v',v)); s.appendChild(el('div','l',l)); return s; }
+function link(href, label){
+  const a = document.createElement('a');
+  a.className = 'btn'; a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  a.appendChild(document.createTextNode(label));
+  a.appendChild(el('span','ext','↗'));
+  return a;
+}
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function fmt(d){
+  if (!d) return '—';
+  const [y,m,day] = d.split('-');
+  return MONTH_FULL[+m - 1] + ' ' + (+day) + ', ' + y;
+}
+function monthRange(n){
+  const y0 = (n.f||'').slice(0,4), y1 = (n.l||'').slice(0,4);
+  return y0 === y1 ? y0 : y0 + '–' + y1;
+}
+
+// ── controls ────────────────────────────────────────────────────────────────
+document.getElementById('search').addEventListener('input', e => {
+  query = e.target.value.trim();
+  render();
+});
+document.getElementById('collapse').addEventListener('click', () => {
+  open.clear(); open.add(ROOT._i);
+  query = ''; document.getElementById('search').value = '';
+  selected = ROOT; render(); detail();
+});
+document.getElementById('ex-theme').addEventListener('click', e => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  e.target.textContent = dark ? 'Dark' : 'Light';
+});
+
+render();
+detail();
+})();
+</script>
+</body>
+</html>

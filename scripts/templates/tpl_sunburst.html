@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beetlewood Farms North - Zoomable Sunburst</title>
+<style>
+:root{
+  --bg:#fcfcfb; --panel:#ffffff; --panel-2:#f7f6f3;
+  --line:#e6e4df; --line-soft:#efeeea;
+  --ink:#1a1a19; --ink-2:#5c5a54; --ink-3:#8a8780;
+  --accent:#2a78d6; --accent-soft:#eaf1fc;
+  --surface:#fcfcfb;
+  --shadow:0 1px 2px rgba(26,26,25,.05), 0 8px 24px -12px rgba(26,26,25,.14);
+  --c-Insecta:#2a78d6; --c-Plantae:#eb6834; --c-Aves:#1baf7a; --c-Fungi:#eda100;
+  --c-Arachnida:#e87ba4; --c-Reptilia:#008300; --c-Amphibia:#4a3aa7;
+  --c-Mammalia:#e34948; --c-other:#b7b4aa;
+}
+html[data-theme="dark"]{
+  --bg:#1a1a19; --panel:#232322; --panel-2:#1f1f1e;
+  --line:#34342f; --line-soft:#2b2b28;
+  --ink:#f0efe9; --ink-2:#a8a59c; --ink-3:#75736b;
+  --accent:#3987e5; --accent-soft:#1e2a3b;
+  --surface:#1a1a19;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  --c-Insecta:#3987e5; --c-Plantae:#d95926; --c-Aves:#199e70; --c-Fungi:#c98500;
+  --c-Arachnida:#d55181; --c-Reptilia:#008300; --c-Amphibia:#9085e9;
+  --c-Mammalia:#e66767; --c-other:#6f6d64;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  transition:background .2s ease, color .2s ease;
+}
+header{
+  display:flex; align-items:baseline; gap:14px;
+  padding:18px 24px 16px; border-bottom:1px solid var(--line); background:var(--panel);
+}
+h1{margin:0; font-size:17px; font-weight:600; letter-spacing:-.01em}
+.sub{font-size:13.5px; color:var(--ink-3)}
+.spacer{flex:1}
+button.ghost{
+  font:inherit; font-size:13px; color:var(--ink-2); background:transparent;
+  border:1px solid var(--line); border-radius:7px; padding:6px 12px; cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var(--ink-3)}
+/* controls */
+.bar{
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:13px 24px; border-bottom:1px solid var(--line-soft); background:var(--panel);
+}
+.seg{display:inline-flex; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:2px}
+.seg button{
+  font:inherit; font-size:13px; color:var(--ink-2); background:transparent; border:0;
+  border-radius:6px; padding:5px 13px; cursor:pointer; transition:background .15s ease, color .15s ease;
+}
+.seg button.on{background:var(--panel); color:var(--ink); font-weight:500; box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.lbl{font-size:12px; color:var(--ink-3); letter-spacing:.03em; text-transform:uppercase}
+.legend{display:flex; flex-wrap:wrap; gap:13px; align-items:center}
+.lg{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-2); cursor:default}
+.lg i{width:9px; height:9px; border-radius:2.5px; display:block}
+/* crumb */
+.crumb{
+  padding:14px 24px 0; font-size:13px; color:var(--ink-3);
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:20px;
+}
+.crumb a{color:var(--ink-3); text-decoration:none; cursor:pointer; transition:color .15s ease}
+.crumb a:hover{color:var(--accent)}
+.crumb .sep{opacity:.5}
+.crumb .cur{color:var(--ink); font-weight:500}
+.crumb .sci, .sci{font-style:italic}
+/* chart */
+.wrap{display:flex; justify-content:center; padding:4px 24px 10px}
+svg{display:block; max-width:100%; height:auto; cursor:default}
+path.slice{cursor:pointer; transition:opacity .15s ease}
+path.slice:hover{opacity:.82}
+text.wedge{pointer-events:none; user-select:none; font-size:10.5px; fill:#fff; font-weight:500}
+html[data-theme="dark"] text.wedge{fill:#14140f}
+#center-hit{cursor:pointer}
+text.ctr{text-anchor:middle; pointer-events:none; user-select:none}
+text.ctr.big{font-size:20px; font-weight:600; fill:var(--ink); letter-spacing:-.02em}
+text.ctr.small{font-size:11.5px; fill:var(--ink-3)}
+/* readout */
+.readout{
+  max-width:860px; margin:0 auto; padding:6px 24px 34px;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:52px;
+}
+.readout .sw{width:11px; height:11px; border-radius:3px; flex:0 0 auto}
+.readout .nm{font-size:16px; font-weight:600; letter-spacing:-.01em}
+.readout .meta{font-size:13.5px; color:var(--ink-3)}
+a.btn{
+  font-size:13px; text-decoration:none; color:var(--ink-2);
+  background:var(--panel); border:1px solid var(--line); border-radius:7px;
+  padding:7px 12px; display:inline-flex; align-items:center; gap:6px;
+  transition:border-color .15s ease, color .15s ease, background .15s ease;
+}
+a.btn:hover{color:var(--accent); border-color:var(--accent); background:var(--accent-soft)}
+.note{
+  max-width:860px; margin:0 auto; padding:0 24px 46px;
+  font-size:12.5px; color:var(--ink-3); line-height:1.6;
+}
+/* tooltip */
+#tip{
+  position:fixed; pointer-events:none; opacity:0; z-index:20;
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+  box-shadow:var(--shadow); padding:9px 12px; font-size:13px; max-width:280px;
+  transition:opacity .12s ease;
+}
+#tip .t{font-weight:600; margin-bottom:2px}
+#tip .r{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em}
+#tip .v{color:var(--ink-2); margin-top:4px; font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Beetlewood Farms North</h1>
+  <span class="sub" id="sb-hsub"></span>
+  <span class="spacer"></span>
+  <button class="ghost" id="sb-theme">Dark</button>
+</header>
+
+<div class="bar">
+  <span class="lbl">Ring size</span>
+  <span class="seg" id="metric">
+    <button data-m="o" class="on">Observations</button>
+    <button data-m="s">Distinct taxa</button>
+  </span>
+  <span class="spacer"></span>
+  <span class="legend" id="legend"></span>
+</div>
+
+<div class="crumb" id="crumb"></div>
+<div class="wrap"><svg id="chart"></svg></div>
+<div class="readout" id="readout"></div>
+<div class="note" id="note"></div>
+<div id="tip"></div>
+
+<script>/*__D3__*/</script>
+<script id="sb-treeData" type="application/json">/*__DATA__*/</script>
+<script>
+(function(){
+"use strict";
+
+const DATA = JSON.parse(document.getElementById('sb-treeData').textContent);
+const META = DATA.meta;
+const SCI = new Set(['genus','species','subspecies','subgenus','stub']);
+const RANK_LABEL = {root:'the farm', class:'class', order:'order', family:'family',
+  genus:'genus', species:'species', subspecies:'subspecies', subgenus:'subgenus',
+  subfamily:'subfamily', tribe:'tribe', superfamily:'superfamily',
+  stub:'partial ID', unresolved:'unplaced'};
+const CLASSES = ['Insecta','Plantae','Aves','Fungi','Arachnida','Reptilia','Amphibia','Mammalia'];
+const cssColor = name => getComputedStyle(document.documentElement)
+  .getPropertyValue('--c-' + (CLASSES.includes(name) ? name : 'other')).trim();
+
+const SIZE = 860, RADIUS = SIZE / 6;   // 3 visible rings
+let metric = 'o';
+let root, focus;
+
+const svg = d3.select('#chart')
+  .attr('viewBox', [-SIZE/2, -SIZE/2, SIZE, SIZE])
+  .attr('preserveAspectRatio','xMidYMid meet')
+  .style('width','100%').style('max-width', SIZE + 'px').style('height','auto')
+  .style('font-family','inherit');
+
+const gArc = svg.append('g');
+const gLabel = svg.append('g').attr('pointer-events','none');
+const gCenter = svg.append('g');
+
+const arc = d3.arc()
+  .startAngle(d => d.x0)
+  .endAngle(d => d.x1)
+  .padAngle(d => Math.min((d.x1 - d.x0) / 2, 0.004))
+  .padRadius(RADIUS * 1.5)
+  .innerRadius(d => d.y0 * RADIUS)
+  .outerRadius(d => Math.max(d.y0 * RADIUS, d.y1 * RADIUS - 1.5));
+
+// depth gives a gentle lightness step so rings read apart; hue always = the class
+const depthOpacity = d => [1, 1, .86, .74, .64, .56, .5][Math.min(6, d)] ;
+
+function build(){
+  const h = d3.hierarchy(DATA.tree, d => d.k)
+    .sum(d => (d.k && d.k.length) ? 0 : (metric === 'o' ? d.o : 1))
+    .sort((a, b) => b.value - a.value);
+  root = d3.partition().size([2 * Math.PI, h.height + 1])(h);
+  root.each(d => d.current = d);
+  focus = root;
+}
+
+function classOf(d){
+  let c = d;
+  while (c.depth > 1 && c.parent) c = c.parent;
+  return c.data.c || 'other';
+}
+
+function draw(){
+  const nodes = root.descendants().slice(1);
+
+  const paths = gArc.selectAll('path').data(nodes, d => path_id(d));
+  paths.exit().remove();
+  const enter = paths.enter().append('path')
+    .attr('class','slice')
+    .attr('fill', d => cssColor(classOf(d)))
+    .attr('fill-opacity', d => arcVisible(d.current) ? depthOpacity(d.depth) : 0)
+    .attr('pointer-events', d => arcVisible(d.current) ? 'auto' : 'none')
+    .attr('stroke','var(--surface)')
+    .attr('stroke-width', 1.5)
+    .attr('d', d => arc(d.current));
+
+  enter.append('title');   // native fallback; the styled tooltip is below
+  enter.on('mouseenter', (e,d) => showTip(e,d))
+       .on('mousemove', moveTip)
+       .on('mouseleave', hideTip)
+       .on('click', (e,d) => { e.stopPropagation(); select(d); if (d.children) zoom(d); });
+
+  gArc.selectAll('path').select('title').text(d => label(d) + ' — ' + valTxt(d));
+
+  const labels = gLabel.selectAll('text').data(nodes, d => path_id(d));
+  labels.exit().remove();
+  labels.enter().append('text')
+      .attr('class','wedge')
+      .attr('dy','0.32em')
+      .attr('fill-opacity', d => +labelVisible(d.current))
+      .attr('transform', d => labelTransform(d.current))
+      .text(labelText)
+      .style('font-style', d => SCI.has(d.data.r) ? 'italic' : 'normal')
+    .append('title').text(d => d.data.n);
+
+  drawCenter();
+  crumb();
+}
+
+function path_id(d){ return d.ancestors().map(a => a.data.n).join('>'); }
+
+function drawCenter(){
+  gCenter.selectAll('*').remove();
+  gCenter.append('circle')
+    .attr('id','center-hit')
+    .attr('r', RADIUS)
+    .attr('fill','var(--panel)')
+    .attr('stroke','var(--line)')
+    .on('click', () => { if (focus.parent) { select(focus.parent); zoom(focus.parent); } });
+
+  const total = focus.value || 0;
+  const name = focus.depth === 0 ? 'All life' : focus.data.n;
+  const t = gCenter.append('text').attr('class','ctr big')
+    .attr('dy', focus.depth === 0 ? '-0.1em' : '-0.15em')
+    .style('font-style', SCI.has(focus.data.r) ? 'italic' : 'normal');
+  t.text(fit(name, 15));
+  gCenter.append('text').attr('class','ctr small').attr('dy','1.35em')
+    .text(total.toLocaleString() + (metric === 'o' ? ' observations' : ' taxa'));
+  if (focus.parent)
+    gCenter.append('text').attr('class','ctr small').attr('dy','3em').text('click to zoom out');
+  gCenter.select('circle').append('title')
+    .text(focus.parent ? 'Zoom out to ' + focus.parent.data.n : 'Everything recorded on the farm');
+}
+
+function fit(s, n){ return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function zoom(p){
+  focus = p;
+  root.each(d => d.target = {
+    x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+    x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+    y0: Math.max(0, d.y0 - p.depth),
+    y1: Math.max(0, d.y1 - p.depth)
+  });
+
+  // the transition must be created on the shared ancestor: both the arc group and
+  // the label group are transitioned against it
+  const t = svg.transition().duration(720).ease(d3.easeCubicOut);
+
+  gArc.selectAll('path').transition(t)
+    .tween('data', d => {
+      const i = d3.interpolate(d.current, d.target);
+      return x => d.current = i(x);
+    })
+    .filter(function(d){ return +this.getAttribute('fill-opacity') || arcVisible(d.target); })
+    .attr('fill-opacity', d => arcVisible(d.target) ? depthOpacity(d.depth) : 0)
+    .attr('pointer-events', d => arcVisible(d.target) ? 'auto' : 'none')
+    .attrTween('d', d => () => arc(d.current));
+
+  gLabel.selectAll('text')
+    .filter(function(d){ return +this.getAttribute('fill-opacity') || labelVisible(d.target); })
+    .transition(t)
+    .attr('fill-opacity', d => +labelVisible(d.target))
+    .attrTween('transform', d => () => labelTransform(d.current));
+
+  drawCenter();
+  crumb();
+}
+
+function arcVisible(d){ return d.y1 <= 4 && d.y0 >= 1 && d.x1 > d.x0; }
+// A label only fits if the wedge is thick enough *tangentially* at its mid-radius
+// to keep neighbouring radial labels from colliding. Outer rings have more room,
+// so this admits more labels the further out you go — which a flat angle
+// threshold does not.
+function labelVisible(d){
+  if (!(d.y1 <= 4 && d.y0 >= 1)) return false;
+  const mid = (d.y0 + d.y1) / 2 * RADIUS;
+  return (d.x1 - d.x0) * mid > 13 && (d.y1 - d.y0) > 0.3;
+}
+// clip the name to the radial room the wedge actually has
+function labelText(d){
+  const room = Math.max(0, (d.current.y1 - d.current.y0) * RADIUS - 14);
+  const max = Math.max(3, Math.floor(room / 6.1));
+  const s = d.data.n;
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+function labelTransform(d){
+  const x = (d.x0 + d.x1) / 2 * 180 / Math.PI;
+  const y = (d.y0 + d.y1) / 2 * RADIUS;
+  return `rotate(${x - 90}) translate(${y},0) rotate(${x < 180 ? 0 : 180})`;
+}
+
+// ── readout / breadcrumb ────────────────────────────────────────────────────
+let selected = null;
+function select(d){ selected = d; readout(); }
+
+function valTxt(d){
+  const o = d.data.o, s = d.data.s;
+  return o.toLocaleString() + (o === 1 ? ' observation' : ' observations') +
+    (d.children ? ' · ' + s.toLocaleString() + (s === 1 ? ' taxon' : ' taxa') : '');
+}
+function label(d){ return d.data.n; }
+
+function inatLink(d){
+  const base = 'https://www.inaturalist.org/observations?user_id=roymorrisii&lat=' +
+    META.lat + '&lng=' + META.lng + '&radius=' + META.radius_km + '&subview=grid';
+  return d.data.id ? base + '&taxon_id=' + d.data.id : base;
+}
+
+function readout(){
+  const el = document.getElementById('readout');
+  el.replaceChildren();
+  const d = selected;
+  if (!d){
+    const p = document.createElement('span');
+    p.className = 'meta';
+    p.textContent = 'Click a wedge to zoom into that branch. Click the middle to come back out.';
+    el.appendChild(p); return;
+  }
+  const sw = document.createElement('span');
+  sw.className = 'sw'; sw.style.background = cssColor(classOf(d)); el.appendChild(sw);
+  const nm = document.createElement('span');
+  nm.className = 'nm' + (SCI.has(d.data.r) ? ' sci' : ''); nm.textContent = d.data.n;
+  el.appendChild(nm);
+  const rk = document.createElement('span');
+  rk.className = 'meta'; rk.textContent = RANK_LABEL[d.data.r] || d.data.r;
+  el.appendChild(rk);
+  const mt = document.createElement('span');
+  mt.className = 'meta'; mt.textContent = valTxt(d); el.appendChild(mt);
+  const a = document.createElement('a');
+  a.className = 'btn'; a.href = inatLink(d); a.target = '_blank'; a.rel = 'noopener';
+  a.textContent = 'His records ↗'; el.appendChild(a);
+  if (d.data.id){
+    const b = document.createElement('a');
+    b.className = 'btn'; b.href = 'https://www.inaturalist.org/taxa/' + d.data.id;
+    b.target = '_blank'; b.rel = 'noopener'; b.textContent = 'Taxon page ↗';
+    el.appendChild(b);
+  }
+}
+
+function crumb(){
+  const el = document.getElementById('crumb');
+  el.replaceChildren();
+  const chain = focus.ancestors().reverse();
+  chain.forEach((a, i) => {
+    if (i) { const s = document.createElement('span'); s.className='sep'; s.textContent='›'; el.appendChild(s); }
+    const isCur = a === focus;
+    const node = document.createElement(isCur ? 'span' : 'a');
+    node.textContent = a.depth === 0 ? 'All life' : a.data.n;
+    node.className = (isCur ? 'cur ' : '') + (SCI.has(a.data.r) ? 'sci' : '');
+    if (!isCur) node.addEventListener('click', () => { select(a); zoom(a); });
+    el.appendChild(node);
+  });
+}
+
+// ── tooltip ─────────────────────────────────────────────────────────────────
+const tip = document.getElementById('tip');
+function showTip(e, d){
+  tip.replaceChildren();
+  const t = document.createElement('div');
+  t.className = 't'; t.textContent = d.data.n;
+  if (SCI.has(d.data.r)) t.style.fontStyle = 'italic';
+  tip.appendChild(t);
+  if (d.data.cm){
+    const c = document.createElement('div');
+    c.className = 'r'; c.style.textTransform = 'capitalize'; c.textContent = d.data.cm;
+    tip.appendChild(c);
+  }
+  const r = document.createElement('div');
+  r.className = 'r'; r.textContent = RANK_LABEL[d.data.r] || d.data.r; tip.appendChild(r);
+  const v = document.createElement('div');
+  v.className = 'v'; v.textContent = valTxt(d); tip.appendChild(v);
+  tip.style.opacity = 1;
+  moveTip(e);
+}
+function moveTip(e){
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip(){ tip.style.opacity = 0; }
+
+// ── chrome ──────────────────────────────────────────────────────────────────
+document.getElementById('sb-hsub').textContent =
+  `${META.total_obs.toLocaleString()} observations · ${DATA.tree.s.toLocaleString()} taxa · ${META.year_min}–${META.year_max}`;
+
+(function legend(){
+  const el = document.getElementById('legend');
+  const present = (DATA.tree.k || []).map(k => k.n);
+  const shown = CLASSES.filter(c => present.includes(c));
+  const others = present.filter(p => !CLASSES.includes(p));
+  shown.concat(others.length ? ['other'] : []).forEach(name => {
+    const s = document.createElement('span'); s.className = 'lg';
+    const i = document.createElement('i'); i.style.background = cssColor(name);
+    s.appendChild(i);
+    s.appendChild(document.createTextNode(name === 'other' ? 'other groups' : name));
+    if (name === 'other') s.title = others.join(', ');
+    el.appendChild(s);
+  });
+})();
+
+document.getElementById('note').textContent =
+  'Each ring is one taxonomic rank: class, then order, family, genus and species outward. ' +
+  'Colour follows the class, so every blue wedge is an insect no matter how deep it sits. ' +
+  'Order, family and genus come from iNaturalist’s taxonomy, fetched live from their API. ' +
+  'Records identified only as far as a genus appear as a “sp.” wedge so the counts still add up to ' +
+  META.total_obs.toLocaleString() + '.';
+
+document.getElementById('metric').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  metric = b.dataset.m;
+  document.querySelectorAll('#metric button').forEach(x => x.classList.toggle('on', x === b));
+  gArc.selectAll('path').remove(); gLabel.selectAll('text').remove();
+  build(); draw(); selected = null; readout();
+});
+document.getElementById('sb-theme').addEventListener('click', e => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  e.target.textContent = dark ? 'Dark' : 'Light';
+  gArc.selectAll('path').attr('fill', d => cssColor(classOf(d)));
+  document.querySelectorAll('#legend .lg i').forEach((i, k) => {
+    const nm = i.parentElement.textContent.trim();
+    i.style.background = cssColor(nm === 'other groups' ? 'other' : nm);
+  });
+  readout();
+});
+
+build(); draw(); readout();
+})();
+</script>
+</body>
+</html>
