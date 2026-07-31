@@ -8,7 +8,7 @@ python3 scripts/fetch_taxonomy.py       # 1. iNat API -> data/taxonomy.json     
 python3 scripts/build_interest.py       # 2. fold     -> data/interest.json     (offline)
 python3 scripts/build_tree.py           # 3. fold     -> data/tree_data.json    (offline)
 python3 scripts/fetch_gap_pool.py       # 4. iNat API -> data/gap_pool.json     (network)
-python3 scripts/build_pages.py          # 5. inline   -> explore/*.html         (offline)
+python3 scripts/build_pages.py          # 5. inline   -> index.html + explore/  (offline)
 ```
 
 Steps 2, 3 and 5 are offline and run in well under a second, so iterating on visuals never
@@ -53,7 +53,21 @@ across 5 ranks; the counts grow as Roy logs. What matters is that the assertions
 counts, plus resolved order and family names. Ancestor names come from `taxonomy.json` where
 already known and a batched `/taxa` lookup otherwise, cached in `taxa_cache.json`.
 
-**5. `build_pages.py`** - inlines data and vendored D3 into the templates.
+**5. `build_pages.py`** - inlines data and vendored D3 into the templates, and builds the
+product: `index.html`, the assembled atlas. The two `explore/` pages are still generated as
+standalone single-view files.
+
+It does **not** just dump the JSONs into the page. `farm_data.json` is 550 KB and the atlas
+needs four fields of it; the gap subtraction needs 4,381 life-list ids the browser would only
+use to compute one boolean per pool row. Both fold here, offline, so the page ships
+aggregates: accumulation points, a group x month grid, and gap rows that already carry their
+interest weight. `gap_rows()` is where the §7 subtraction and weighting live - read it before
+changing the ranking.
+
+    python3 scripts/build_pages.py --gap-top 30    # print the ranked gaps, write nothing
+
+`COUNT_EXP` lives at the top of the file and ships at 0.5. BUILD_SPEC §7 has the calibration
+and, importantly, which population it was measured on.
 
 ## The one non-obvious rule
 
@@ -68,17 +82,24 @@ shipping numbers that do not add up. Do not relax those assertions to make a cha
 
 ## Editing the views
 
-`explore/explorer-2pane.html` and `explore/sunburst-zoom.html` are **generated**. Edit
-`scripts/templates/*.html` and re-run `build_pages.py` - hand edits to the 400-650 KB output
-files are overwritten.
+`index.html`, `explore/explorer-2pane.html` and `explore/sunburst-zoom.html` are **generated**.
+Edit `scripts/templates/*.html` and re-run `build_pages.py` - hand edits to the 376 KB /
+646 KB / 991 KB output files are overwritten. Do not open them to read the code either; the
+templates are the same views at ~20-45 KB with no inlined data.
 
-Templates carry two placeholders, `/*__DATA__*/` and `/*__D3__*/`. `build_pages.py` inlines
-the data and the vendored D3 (`scripts/vendor/d3.v7.min.js`, v7.9.0), then asserts no external
-`<script src>` and no `localStorage`/`sessionStorage` survived - **before** writing the file,
-so a failed check cannot leave a broken artifact on disk.
+Templates carry four placeholders and use whichever they need: `/*__DATA__*/` and
+`/*__TREE__*/` (both the tree JSON), `/*__ATLAS__*/` (the composed atlas payload) and
+`/*__D3__*/` (vendored `d3.v7.min.js`, v7.9.0). `build_pages.py` then asserts no external
+`<script src>`, no `localStorage`/`sessionStorage`, and no unfilled placeholder survived -
+**before** writing the file, so a failed check cannot leave a broken artifact on disk.
 
-DOM ids in the two templates are prefixed `ex-` and `sb-` so both views can live in one
-merged page. Keep new ids prefixed; BUILD_SPEC §8 has the detail and the smoke test result.
+**Namespacing, and why prefixing ids was not enough.** The two standalone templates prefix
+their ids `ex-` and `sb-`. That is necessary but not sufficient once they share a page with
+the shell: all three used `.card`, `.stat`, `.crumb`, `.note` and `.btn` for different things,
+so the explorer's thumbnail cards would have inherited the shell's panel padding. In
+`tpl_atlas.html` the explorer is `x-*` classes / `ex-*` ids scoped under `.exv`, and the
+sunburst is `s-*` / `sb-*` under `.sbv`. Keep new names inside those namespaces, and check
+`index.html` for duplicate ids after any change - BUILD_SPEC §8 and §13.
 
 Running the offline steps on unchanged inputs reproduces the shipped files byte identically.
 
@@ -91,11 +112,20 @@ fails a page that renders nothing at all, and exits non-zero so CI can gate on i
 ```bash
 pip3 install --user playwright && python3 -m playwright install chromium   # once
 python3 scripts/screenshot.py explore/*.html
-python3 scripts/screenshot.py --tabs atlas.html    # clicks every [data-tab] and shoots each
+python3 scripts/screenshot.py --tabs index.html   # clicks every [data-tab] and shoots each
 ```
 
 Use `python3 -m playwright`, not a bare `playwright` - pip puts the CLI somewhere that is
 usually not on PATH.
+
+PNGs land in `shots/`, which is **gitignored** - they will not show up in `git status`, so
+attach them from disk rather than expecting them in a diff.
+
+`--tabs` tries a real click first so a control hidden behind an overlay still fails the run,
+and falls back to a DOM click. The fallback exists for one specific case: the Tree of Life
+view toggle lives inside its own panel, and DOM order means the tool reaches it after some
+other panel is showing, where a real click cannot land. Its handler activates the containing
+tab, so the fallback is safe rather than a way of pretending something was clickable.
 
 ## Rate limits
 

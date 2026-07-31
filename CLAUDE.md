@@ -15,15 +15,17 @@ His full account is 8,287 obs across several countries - **the account is not th
 
 ## State
 
+- `index.html` - **the product.** The assembled 5 tab atlas, generated. ~990 KB.
 - `scripts/` - a 5 step pipeline, all of it working. `scripts/README.md` documents it.
 - `explore/` - two generated taxonomy views (explorer + sunburst), both rendering
-  `data/tree_data.json`.
-- `wireframe/index.html` - the 4 tab dashboard prototype. Source material for the Overview,
-  Seasonal Calendar and What He Logs tabs. Being replaced by the assembled app.
+  `data/tree_data.json`. Still shipped as standalone single-view pages; the atlas ports
+  both into its Tree of Life tab rather than linking to them.
+- `wireframe/index.html` - the 4 tab prototype. **Superseded** - it was the source material
+  for three tabs and is kept only for reference. Do not build against it.
 - `archive/` - superseded prototypes kept for reference. Not part of the product.
 
-The job now is assembling one single page app from these pieces and shipping it. BUILD_SPEC
-§ "What to build now" has the ordered plan.
+The app is assembled and the gap checklist runs on real data. What remains is the weekly
+GitHub Actions refresh and the deploy. BUILD_SPEC § "State of the build" has the detail.
 
 ## Hard rules
 
@@ -32,13 +34,14 @@ The job now is assembling one single page app from these pieces and shipping it.
    The one exception is taxon photos, which are remote iNat URLs with a graceful
    "photo offline" fallback. Keep that fallback.
 2. **Edit templates, never generated HTML.** `scripts/templates/*.html` -> `build_pages.py`
-   -> `explore/*.html`. Hand edits to the output are overwritten.
-3. **Do not read the big generated files - read the templates.** `explore/sunburst-zoom.html`
-   is 646 KB, `explorer-2pane.html` 376 KB, `wireframe/index.html` 466 KB, and almost all of
-   that is inlined JSON and vendored D3 you already have in `data/` and `scripts/vendor/`.
-   Opening one whole burns a large slice of context on a blob you can query with two lines of
-   Python. Read `scripts/templates/*.html` instead - same two views, ~20 KB each, no data. For
-   the wireframe, grep out the structure rather than reading it end to end.
+   -> `index.html` and `explore/*.html`. Hand edits to the output are overwritten.
+3. **Do not read the big generated files - read the templates.** `index.html` is 991 KB,
+   `explore/sunburst-zoom.html` 646 KB, `explorer-2pane.html` 376 KB, `wireframe/index.html`
+   466 KB, and almost all of that is inlined JSON and vendored D3 you already have in `data/`
+   and `scripts/vendor/`. Opening one whole burns a large slice of context on a blob you can
+   query with two lines of Python. Read `scripts/templates/*.html` instead - `tpl_atlas.html`
+   is the whole app at ~45 KB, the other two ~20 KB each, none with data. For the wireframe,
+   grep out the structure rather than reading it end to end.
 4. **Palette is fixed and validated.** Reference the `--c-<Class>` custom properties, never
    raw hex. Colour follows the iconic class, never the rank. BUILD_SPEC §9 is the complete
    chart convention - there is no `dataviz` skill in this repo, so do not go hunting for one.

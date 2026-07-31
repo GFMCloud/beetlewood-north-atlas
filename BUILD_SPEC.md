@@ -18,13 +18,13 @@ Griffin, GA (lat 33.18, lng -84.20). Roy is Graham's dad.
 (`NEARBY_RADIUS_KM`). Both live in `scripts/inat.py`. Conflating them inflates every headline
 figure on the site by 25% - see §11.
 
-Farm subset as of the 2026-07-30 snapshot: **1,393 observations, 950 species, 2023-2026,
-75% research grade**, heavily skewed to insects (Insecta 1,090 obs; then Plantae 147,
-Aves 78, a long tail). **These figures move on every refresh** - a 2026-07-31 dry run
-already read 1,405 / 955. Treat every count in this document as a dated snapshot, not an
-invariant. The invariant is that the totals reconcile, which `build_tree.py` asserts. His full
-account is 8,287 observations across several countries - **do not treat the account as the
-farm.**
+Farm subset as of the **2026-07-31** refresh, which is what is committed: **1,405
+observations, 955 species, 1,939 taxa in the tree, 2023-2026, 75% research grade**, heavily
+skewed to insects (Insecta 1,102 obs; then Plantae 147, Aves 78, a long tail). The 2026-07-30
+snapshot read 1,393 / 950, five days of logging earlier. **These figures move on every
+refresh.** Treat every count in this document as a dated snapshot, not an invariant. The
+invariant is that the totals reconcile, which `build_tree.py` asserts. His full account is
+8,287 observations across several countries - **do not treat the account as the farm.**
 
 ## 2. Locked decisions
 
@@ -50,24 +50,35 @@ farm.**
   (`archive/explorations.html`, kept for reference only), the old sunburst tab in the
   wireframe. No in browser "Refresh now" button in v1.
 
-## 3. What to build now
+## 3. State of the build
 
-Assemble one cohesive single page app, wire the live data, ship it.
-
-1. **Atlas shell.** One self contained SPA, template generated through `build_pages.py`.
-   Tabs:
-   - **Overview** - stat tiles + species accumulation curve (from `wireframe/index.html`).
-   - **Tree of Life** - Explorer <-> Sunburst toggle. Port both `explore/` views into this
-     one tab. See §8 for what is already done to make them mergeable and what is not.
-   - **Seasonal Calendar** - phenology heatmap + accumulation (from the wireframe).
-   - **What He Logs** - the interest profile, now reading `data/interest.json` (§6).
+1. **Atlas shell - DONE** (2026-07-31). One self contained SPA at `index.html`, generated
+   from `scripts/templates/tpl_atlas.html` through `build_pages.py`. Tabs:
+   - **Overview** - stat tiles + species accumulation curve.
+   - **Tree of Life** - one tab, Explorer <-> Sunburst toggle, Explorer the default. Both
+     `explore/` views ported rather than rebuilt; §8 records how.
+   - **Seasonal Calendar** - phenology heatmap + stacked monthly bars.
+   - **What He Logs** - the interest profile from `data/interest.json` (§6), at all three
+     ranks rather than only classes.
    - **Gap Checklist** - real data (§7).
-2. **Gap checklist.** `fetch_gap_pool.py` has been probed with `--check` but never run in
-   full (§12). Run it, look at the numbers, then build the view. The pool is 1,807 nearby
-   research-grade species against his 4,276 recorded species.
-3. **Refresh automation.** Weekly Actions cron running the 5 step pipeline, committing
-   refreshed JSON + rebuilt pages.
-4. **Deploy** and hand Graham the URL.
+
+   The accumulation curve lives on Overview only. §3 originally listed it under Overview
+   *and* Seasonal; rendering the identical chart twice was worse than picking one, so
+   Seasonal got stacked monthly bars instead.
+
+2. **Gap checklist - DONE.** `fetch_gap_pool.py` has now run in full. Numbers and the
+   `COUNT_EXP` decision are in §7.
+
+3. **Refresh automation - NOT STARTED.** Weekly Actions cron running the 5 step pipeline,
+   committing refreshed JSON + rebuilt pages. §12 flags the one thing only this can settle:
+   whether Actions runners can reach the iNat API.
+
+4. **Deploy - NOT STARTED.** Create the repo, set the three settings in §13, hand Graham
+   the URL.
+
+**The output is `index.html`, not `atlas.html`.** Pages in deploy-from-a-branch mode serves
+the repo root, so the file has to be `index.html` for Roy to get a bare URL rather than one
+with a path on the end. Earlier drafts of this spec called it `atlas.html` throughout.
 
 ## 4. Repo layout
 
@@ -76,6 +87,7 @@ CLAUDE.md          auto-loaded pointer + hard rules
 README.md          human orientation
 BUILD_SPEC.md      this file - the source of truth
 KICKOFF.md         the prompt to paste into Claude Code
+index.html         THE PRODUCT - the assembled atlas  (GENERATED, ~990 KB)
 scripts/           the pipeline (see scripts/README.md)
   inat.py                shared API helpers + the farm scope constants
   fetch_observations.py  step 0  (network)
@@ -83,13 +95,16 @@ scripts/           the pipeline (see scripts/README.md)
   build_interest.py      step 2  (offline)
   build_tree.py          step 3  (offline)
   fetch_gap_pool.py      step 4  (network)
-  build_pages.py         step 5  (offline)
-  templates/         tpl_explorer.html, tpl_sunburst.html
+  build_pages.py         step 5  (offline) - also composes the atlas payload
+  screenshot.py          verification helper, NOT a pipeline step
+  templates/         tpl_explorer.html, tpl_sunburst.html, tpl_atlas.html
   vendor/            d3.v7.min.js (v7.9.0)
 data/              farm_data.json, taxonomy.json, interest.json, tree_data.json,
-                   gap_pool.json (after step 4), observations764712.csv (reference only)
+                   gap_pool.json, taxa_cache.json, observations764712.csv (reference only)
 explore/           explorer-2pane.html, sunburst-zoom.html  (GENERATED)
-wireframe/         index.html - prototype, source material for 3 tabs
+                   still shipped as standalone single-view pages
+shots/             screenshot.py output - gitignored, not part of the product
+wireframe/         index.html - prototype, superseded by the assembled app
 archive/           explorations.html - radial tree + brain map, not in the product
 ```
 
@@ -102,7 +117,7 @@ archive/           explorations.html - radial tree + brain map, not in the produ
 | 2 | `build_interest.py` | farm + taxonomy -> `data/interest.json` | no |
 | 3 | `build_tree.py` | farm + taxonomy -> `data/tree_data.json` | no |
 | 4 | `fetch_gap_pool.py` | iNat API -> `data/gap_pool.json` | yes |
-| 5 | `build_pages.py` | tree + D3 -> `explore/*.html` | no |
+| 5 | `build_pages.py` | all four JSONs + D3 -> `explore/*.html` **and `index.html`** | no |
 
 Run in that order. Conventions the pipeline enforces and you must keep:
 
@@ -115,10 +130,20 @@ Run in that order. Conventions the pipeline enforces and you must keep:
   that fails loudly and one that quietly publishes an empty atlas.
 - `build_tree.py` asserts every parent equals the sum of its children and that the root
   equals `meta.total_obs`.
-- `build_pages.py` asserts no external `<script src>` and no web storage survive inlining,
-  **before** writing the file.
-- Templates use `/*__DATA__*/` and `/*__D3__*/` placeholders. Edit templates, never the
-  generated HTML.
+- `build_pages.py` asserts no external `<script src>`, no web storage, and no unfilled
+  placeholder survive inlining, **before** writing the file.
+- Templates carry `/*__DATA__*/`, `/*__TREE__*/`, `/*__ATLAS__*/` and `/*__D3__*/`
+  placeholders; each template uses whichever it needs. Edit templates, never the generated
+  HTML.
+- **Step 5 composes the atlas payload, it does not dump the JSONs.** `farm_data.json` is
+  550 KB and the atlas needs four fields of it; the gap subtraction needs 4,381 life-list
+  ids the browser would only use to compute one boolean per pool row. Both fold offline in
+  `build_pages.py`, so the page ships aggregates - accumulation points, a class x month
+  grid, and gap rows that already carry their weight and their two seen-flags. That, plus
+  both tree views reading one shared `#treeData` block, is why `index.html` is ~990 KB
+  rather than the ~1.5 MB §8 predicted.
+- `python3 scripts/build_pages.py --gap-top 30` prints the ranked gap list and writes
+  nothing. Use it to re-check the ranking after any change to §6 or §7.
 - Every network script takes `--check`: one tiny request that prints the response shape.
   Use it before committing to a full pull.
 
@@ -197,36 +222,59 @@ and any floor below 1.0 means logging a family once penalises it relative to nev
 touched it. Measured after the fix: 133/133 logged insect families at or above baseline,
 Cerambycidae 11th of 133 at weight 180.9 against a 94.0 baseline, Buprestidae at 94.8.
 
-**`COUNT_EXP`, calibrated against the real pool (2026-07-31).** The nearby counts turn out to
-be tiny: across 840 gaps the median is **1** and the maximum is **26**. The worked example in
-earlier drafts assumed a weed with 180 nearby records dominating a longhorn with 12. No such
-species exists here. `log1p` over a 1-26 range spans 0.69 to 3.30, about 4.8x, against a
-weight range of roughly 47-185, about 4x - so the two terms are already comparable and the
-"abundance drowns interest" worry does not materialise on this data.
+**`COUNT_EXP` = 0.5, SHIPPED.** Calibrated against the real pool, re-measured 2026-07-31
+after the full pull. The nearby counts are tiny: across the 838 lifer gaps the median is
+**1** and the maximum is **26**. The worked example in earlier drafts assumed a weed with 180
+nearby records dominating a longhorn with 12. No such species exists here. `log1p` over a
+1-26 range spans 0.69 to 3.30, about 4.8x, against a weight range of roughly 47-185, about
+4x - so the two terms are already comparable and the "abundance drowns interest" worry does
+not materialise on this data.
 
-What the exponent actually controls is how insect-heavy the top of the list is:
+What the exponent actually controls is how insect-heavy the top of the list is. Measured on
+the 838 lifer gaps:
 
 | COUNT_EXP | insects in top 50 | beetles in top 50 |
 |---|---|---|
 | 1.00 | 32 | 8 |
-| 0.50 | 38 | 7 |
+| **0.50** | **38** | **7** |
 | 0.25 | 48 | 7 |
 
 **Ship 0.5.** At 0.25 the list is 48/50 insects, which loses the genuinely useful "you have
 somehow never logged this common thing" signal; at 1.0 it drifts plant-heavy. Note the beetle
 count barely moves either way - there simply are not many nearby research-grade beetle records
 he has missed, because he is the local authority. Getting to beetles is the group filter's
-job, not the sort's. Say that in the UI rather than implying the global ranking does it.
+job, not the sort's. The UI says so rather than implying the global ranking does it.
 
-The raw gap mix is Plantae 343, Insecta 259, Fungi 132, Arachnida 44, and a long tail - so the
-interest weighting is doing real work to surface insects from a plant-majority pool.
+**Which population you calibrate on matters.** The table above is the *lifer* list. The
+not-yet-on-farm list is a different and larger population (1,053 rows) and runs hotter -
+46/50 insects at the same exponent - because it also contains everything he has recorded
+elsewhere but not here. Comparing a mix measured on one against a figure measured on the
+other will look like a regression and is not one.
 
-UI, ported from the wireframe mock: scope (radius now, Spalding County as a second pass -
+The raw lifer gap mix is Plantae 343, Insecta 258, Fungi 131, Arachnida 44, and a long tail -
+so the interest weighting is doing real work to surface insects from a plant-majority pool.
+
+**An iconic group with no interest score falls back to the weakest logged class, not to
+zero.** 9 pool species sit in groups he has never logged (Actinopterygii 8, Unknown 1). A
+zero weight would delete them from a list whose entire purpose is showing what he is missing;
+the weakest class he *has* logged (Mollusca, 20.0) sorts them to the bottom but keeps them
+visible.
+
+Numbers at the 2026-07-31 pull, dated like every other count here: pool **1,807**, of which
+**838** are true lifers and **1,053** are not yet recorded on the farm. 480 distinct families
+appear in the pool and 231 of them carry a multiplier - the other 249 sit at the class
+baseline of 1.0.
+
+UI as built: scope (radius; the Spalding County option is present but disabled, because
 county needs a `place_id` from `/places/autocomplete`), not-yet-logged (anywhere -> subtract
-`life_taxa` | on farm -> subtract `farm_taxa`), group filter (iconic class, or `order`/`family`
-from the baked pool), min nearby count. Each row shows the weight that drove its rank. Note
-that the mock only prototypes scope and a group filter - **min nearby count and the
-group-by-iconic control do not exist in it and have to be built.**
+`life_taxa` ∪ `farm_taxa` | on farm -> subtract `farm_taxa`), group filter (iconic group or
+order, both with counts, from the baked pool), min nearby count, and a free-text filter over
+name/common/family/order. Each row shows the weight that drove its rank; the hover shows the
+full `weight × log1p(count)^COUNT_EXP` arithmetic. Rows are paged 50 at a time.
+
+Both the subtraction and the weight are computed in `build_pages.py`, not in the browser -
+each row ships with its weight and two booleans (`lg` = not logged anywhere, and implicitly
+not on the farm, since rows already on the farm are dropped at build time).
 
 ## 8. Tree of Life - merging the two views
 
@@ -243,11 +291,32 @@ than assumed:
   `sb-`. A merged smoke page renders both views simultaneously - 11 class rows and 1,930
   sunburst paths, zero JS errors, zero duplicate ids.
 
-Still to do in assembly: shared chrome (one header, one theme toggle), CSS scoping, loading
-D3 once, and deciding which view is the default. The 20 shared CSS custom properties have
-identical values in both templates and merge cleanly. A merged page carrying both views plus
-D3 lands around 1 MB; adding the wireframe tabs and their data puts the finished SPA near
-1.5 MB, which is fine for Pages but worth knowing before you inline a fourth copy of anything.
+**Assembly is done** (2026-07-31), and what it took was more than prefixing ids.
+
+- **Id prefixes alone were not enough.** The two templates still shared *class* names with
+  each other and with the new shell - `.card`, `.stat`, `.stats`, `.crumb`, `.note`, `.btn`,
+  `.nm`, `.sep`, `.swatch`, `.legend`, `.seg` all collided. The explorer's `.card` is a
+  species thumbnail; the shell's `.card` is a padded panel. Merged flat, every thumbnail
+  would have picked up panel padding. So the port namespaces **everything**: `x-*` classes
+  and `ex-*` ids for the explorer, `s-*` classes and `sb-*` ids for the sunburst, with all
+  view CSS scoped under `.exv` / `.sbv`. Keep new names inside those namespaces.
+- **One shared tooltip.** Both views and all four charts draw into a single `#tip`; the
+  innards are `.tip-t` / `.tip-r` / `.tip-v`.
+- **One copy of the tree.** Both views read the same `#treeData` block instead of `ex-` and
+  `sb-` copies, which is 350 KB saved.
+- **Default view is the Explorer.** It is searchable and reads as a tool; the sunburst is the
+  picture. Roy is the audience (§2), so the tool goes first.
+- **Theme.** One toggle in the shell chrome, with a hook list. Only two things need repainting
+  on a flip: the sunburst resolves its fills to hex at draw time, and the heatmap picks its
+  cell-label ink by contrast (§9). Everything else is CSS custom properties and follows on
+  its own.
+
+Verified on the built page: **48 ids, no duplicates**; `screenshot.py --tabs` reports 1,947
+marks and zero console errors across all seven views.
+
+The 20 shared CSS custom properties had identical values in both templates and merged cleanly.
+Final size is **~990 KB**, not the ~1.5 MB estimated here, because step 5 composes the payload
+rather than dumping the source JSONs (§5) and the tree is inlined once.
 
 ## 9. Design conventions
 
@@ -266,10 +335,21 @@ D3 lands around 1 MB; adding the wireframe tabs and their data puts the finished
   | dark  | #3987e5 | #d95926 | #199e70 | #c98500 | #d55181 | #008300 | #9085e9 | #e66767 | #6f6d64 |
 
   The palette covers 9 buckets; his data has 11 iconic groups. Animalia, Protozoa and
-  Mollusca (5 observations between them) collapse to "other". **`wireframe/index.html` uses
-  raw hex rather than the tokens and is missing `#6f6d64` entirely** - converting it to
-  tokens is part of assembly, and is where colours will silently drift if you rush it.
+  Mollusca (5 observations between them) collapse to "other". `wireframe/index.html` used
+  raw hex rather than the tokens and was missing `#6f6d64` entirely; **that conversion is
+  done** - `index.html` carries 21 `--c-<Class>` references and no palette colour hard coded
+  anywhere. The only hex literals left in `tpl_atlas.html` outside the two token blocks are
+  `#ffffff` and `#14140f`, which are label ink, not palette. Check it with:
+
+      grep -o '#[0-9a-f]\{6\}' scripts/templates/tpl_atlas.html | sort -u
+
 - Colour follows the class, never the rank. A filter must not repaint survivors.
+- **Text on a filled mark picks its ink by measured contrast, not by a threshold.** The
+  seasonal heatmap shades each cell with its group's own hue at varying opacity. A fixed
+  "opacity >= 0.5 means white text" rule reads fine on the blue and green ramps and washes
+  out on Fungi's `#eda100`. `inkOn()` blends the fill over `--panel` for real, computes
+  relative luminance, and returns whichever of white / `#14140f` actually has more contrast.
+  It is theme independent by construction, which is why the heatmap redraws on a theme flip.
 - Hover tooltips on marks, zoom/pan on big canvases, selective direct labels. The palette,
   the class mapping and the interaction rules above are the whole convention - follow them
   directly. (If a `dataviz` skill happens to be available it is worth reading, but nothing in
@@ -320,10 +400,14 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
 - The farm boundary is a lat/lng radius, not an official iNat place, so a few edge records
   are approximate.
 - "Species" as distinct `scientific_name` runs slightly higher than iNat's leaf species count.
-  The reconciled figure is whatever `tree_data.json` reports as leaves (950 at the snapshot).
+  The reconciled figure is whatever `tree_data.json` reports as leaves (955 at this refresh).
 - `life_taxa` is the authoritative life list count and `meta.life_list_species` is now derived
   from it. An older snapshot had 4,754 ids against a hand set 4,739 - fixed by construction,
-  not by editing a number.
+  not by editing a number. It currently reads **4,381**: 4,276 species from `species_counts`
+  plus his farm records folded in. **4,276 and 4,381 are both correct and mean different
+  things** - the first is what the endpoint returns, the second is what the gap subtraction
+  must use, and §7 explains why the union is required. If a doc or a stat tile quotes one
+  where the other belongs, that is the bug.
 
 ## 12. Verified against the live API, 2026-07-31
 
@@ -340,12 +424,24 @@ Both `--check` probes were run from Graham's machine. Results:
 - **The retry path works.** One probe hit "Remote end closed connection without response" and
   recovered on retry 1 of 3.
 
+Since verified, same day:
+
+- **`fetch_gap_pool.py` has run in full.** 4 requests, 1,807 species, 0 without a resolved
+  family (the rank cache was already warm). Numbers in §7.
+- **`fetch_observations.py --dry-run` completed against the live API.** 1,405 observations /
+  955 species / 4,381 life taxa, with no change against what was on disk, so the guards were
+  not exercised in anger. The 4,381 is 4,276 from `species_counts` plus his farm records
+  folded in - the union §7 needs is done in the fetcher, not at render time.
+- **The offline photo fallback works.** With every HTTP request blocked, the tree renders and
+  12 taxon photos fall back to the "photo offline" placeholder with zero JS errors.
+
 Still unverified:
 
-- Neither network script has run a **full** pull yet, only `--check`. Use `--dry-run` on
-  `fetch_observations.py` first; it pulls and diffs without writing.
 - Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
-  first scheduled run needs eyes on it, not an assumption.
+  first run needs eyes on it, not an assumption. Give the workflow a `workflow_dispatch`
+  trigger and watch one manual run before trusting the cron.
+- Whether `fetch_observations.py`'s empty-file and >10% shrink guards fire correctly. They
+  have never been triggered, only read.
 
 ## 13. Prerequisites and verification
 
@@ -389,16 +485,27 @@ If something proposes adding a connector or an API key for iNaturalist, it has n
 **Verification checklist.** Before calling any change done:
 
 - `python3 scripts/build_tree.py` - **the reconciliation assertions pass**. Do not check the
-  printed counts against 1,393 / 950 / 1,930; those are the 2026-07-30 snapshot and Roy is
-  actively logging. What must hold is that every parent equals the sum of its children and
-  the root equals `meta.total_obs`.
+  printed counts against any figure written in this document; every one of them is a dated
+  snapshot and Roy is actively logging, so a mismatch is the expected outcome, not a
+  regression. What must hold is that every parent equals the sum of its children and the root
+  equals `meta.total_obs`. The script says `totals reconcile at every level: OK` when it does.
 - `python3 scripts/build_interest.py` - classes, families and genera all scored, coverage
   reported.
 - `python3 scripts/build_pages.py` - offline safety assertions pass.
-- `python3 scripts/screenshot.py explore/*.html` (or `--tabs` once the SPA exists) - shoots
-  each page, separates real console errors from the expected offline photo failures, flags a
-  page that renders zero marks, and exits non-zero so it can gate a build. Attach the PNGs.
-- Confirm the palette still comes from custom properties, not raw hex.
+- `python3 scripts/screenshot.py --tabs index.html explore/*.html` - shoots each page and,
+  with `--tabs`, every `[data-tab]` on it. Separates real console errors from the expected
+  offline photo failures, flags a page that renders zero marks, and exits non-zero so it can
+  gate a build. PNGs land in `shots/`, which is **gitignored** - attach them, do not expect
+  them in `git status`. A real click is tried first and a DOM click is the fallback, so
+  controls nested inside a not-yet-active panel (the Tree of Life view toggle) are reachable.
+- `python3 scripts/build_pages.py --gap-top 30` - the gap ranking still looks sane and the
+  top-50 mix still matches §7's table for the population you are measuring.
+- Confirm the palette still comes from custom properties, not raw hex (§9 has the grep).
+- Confirm no duplicate DOM ids in `index.html` - the merged page's one structural hazard:
+
+      python3 -c "import re,collections,pathlib; \
+      print([k for k,v in collections.Counter(re.findall(r'\sid=\"([^\"]+)\"', \
+      pathlib.Path('index.html').read_text())).items() if v>1] or 'no duplicates')"
 
 ## 14. Parked, not forgotten
 
