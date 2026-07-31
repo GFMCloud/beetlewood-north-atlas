@@ -82,6 +82,21 @@ merged page. Keep new ids prefixed; BUILD_SPEC §8 has the detail and the smoke 
 
 Running the offline steps on unchanged inputs reproduces the shipped files byte identically.
 
+## Verifying a change
+
+`scripts/screenshot.py` is not a pipeline step - it is the evidence tool. It screenshots each
+page, reports console errors, treats offline taxon photos as expected rather than as failures,
+fails a page that renders nothing at all, and exits non-zero so CI can gate on it.
+
+```bash
+pip3 install --user playwright && python3 -m playwright install chromium   # once
+python3 scripts/screenshot.py explore/*.html
+python3 scripts/screenshot.py --tabs atlas.html    # clicks every [data-tab] and shoots each
+```
+
+Use `python3 -m playwright`, not a bare `playwright` - pip puts the CLI somewhere that is
+usually not on PATH.
+
 ## Rate limits
 
 iNaturalist asks for "about 1 per second, and around 10k API requests a day", and warns that

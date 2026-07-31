@@ -34,9 +34,12 @@ The job now is assembling one single page app from these pieces and shipping it.
 2. **Edit templates, never generated HTML.** `scripts/templates/*.html` -> `build_pages.py`
    -> `explore/*.html`. Hand edits to the output are overwritten.
 3. **Palette is fixed and validated.** Reference the `--c-<Class>` custom properties, never
-   raw hex. Colour follows the iconic class, never the rank.
+   raw hex. Colour follows the iconic class, never the rank. BUILD_SPEC §9 is the complete
+   chart convention - there is no `dataviz` skill in this repo, so do not go hunting for one.
 4. **No credentials, ever.** The iNat API is public read and needs none.
 5. **Totals must reconcile.** `build_tree.py` asserts every parent equals the sum of its
    children. Do not relax those assertions to make a change pass.
 6. **Show evidence.** Screenshots, console error checks, command output. Graham wants proof,
-   not assertions of success. Push back if a direction looks wrong.
+   not assertions of success. Push back if a direction looks wrong. BUILD_SPEC §13 lists the
+   prerequisites, including the headless browser the screenshots need - install it before you
+   need it rather than skipping verification when it is missing.

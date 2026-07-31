@@ -270,8 +270,10 @@ D3 lands around 1 MB; adding the wireframe tabs and their data puts the finished
   raw hex rather than the tokens and is missing `#6f6d64` entirely** - converting it to
   tokens is part of assembly, and is where colours will silently drift if you rush it.
 - Colour follows the class, never the rank. A filter must not repaint survivors.
-- Hover tooltips on marks, zoom/pan on big canvases, selective direct labels. Read the
-  `dataviz` skill before adding any chart.
+- Hover tooltips on marks, zoom/pan on big canvases, selective direct labels. The palette,
+  the class mapping and the interaction rules above are the whole convention - follow them
+  directly. (If a `dataviz` skill happens to be available it is worth reading, but nothing in
+  this repo provides one, so do not go looking for it.)
 
 ## 10. Data model
 
@@ -345,9 +347,40 @@ Still unverified:
 - Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
   first scheduled run needs eyes on it, not an assumption.
 
-## 13. Verification checklist
+## 13. Prerequisites and verification
 
-Before calling any change done:
+**Environment.** Verified working on macOS, Python 3.9.6, git 2.50.1, 2026-07-31.
+
+- **Python 3.9+ and nothing else.** Every import across all six scripts is stdlib -
+  `argparse, collections, datetime, json, math, pathlib, random, sys, time, urllib`. No pip
+  install, no requirements.txt, no virtualenv needed to run the pipeline. Keep it that way:
+  a new third-party dependency also has to be installed on the CI runner.
+- **Network egress to `api.inaturalist.org`** for steps 0, 1 and 4. If this is blocked the
+  failure looks like a code bug. It is not. Diagnose it in five seconds with
+  `python3 scripts/fetch_observations.py --check`.
+- **A headless browser, for verification only.** Not installed by default and not needed by
+  the pipeline:
+
+      pip3 install --user playwright && python3 -m playwright install chromium
+
+  (A `.venv` is tidier if you prefer; it is a dev-only tool either way.)
+- **`gh` authenticated**, for creating the repo and configuring Pages. Run `gh auth status`
+  first. Never handle tokens in this repo - the pipeline needs no credentials and none should
+  ever be added.
+
+**Three GitHub settings that fail silently if wrong:**
+
+1. **Repo must be public** or free Pages will not serve it. Roy's iNat data is already public.
+2. **Pages source = "Deploy from a branch."** An Actions-based Pages deploy never fires,
+   because a push made with the default `GITHUB_TOKEN` does not trigger other workflows.
+3. **Actions workflow permissions = read and write.** Some account defaults are read-only, and
+   the weekly cron commits refreshed JSON back. Wrong here, the workflow runs green, commits
+   nothing, and the site quietly stops updating. This is the nastiest of the three.
+
+**No MCP connector is required.** The iNat API is public read over plain HTTP with no auth.
+If something proposes adding a connector or an API key for iNaturalist, it has not read §5.
+
+**Verification checklist.** Before calling any change done:
 
 - `python3 scripts/build_tree.py` - **the reconciliation assertions pass**. Do not check the
   printed counts against 1,393 / 950 / 1,930; those are the 2026-07-30 snapshot and Roy is
@@ -356,8 +389,9 @@ Before calling any change done:
 - `python3 scripts/build_interest.py` - classes, families and genera all scored, coverage
   reported.
 - `python3 scripts/build_pages.py` - offline safety assertions pass.
-- Screenshot every tab in headless Chromium and confirm no console errors other than the
-  known remote photo failures when offline.
+- `python3 scripts/screenshot.py explore/*.html` (or `--tabs` once the SPA exists) - shoots
+  each page, separates real console errors from the expected offline photo failures, flags a
+  page that renders zero marks, and exits non-zero so it can gate a build. Attach the PNGs.
 - Confirm the palette still comes from custom properties, not raw hex.
 
 ## 14. Parked, not forgotten
