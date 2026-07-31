@@ -69,11 +69,12 @@ invariant is that the totals reconcile, which `build_tree.py` asserts. His full 
 2. **Gap checklist - DONE.** `fetch_gap_pool.py` has now run in full. Numbers and the
    `COUNT_EXP` decision are in §7.
 
-3. **Refresh automation - WRITTEN, FIRST RUN PENDING.** `.github/workflows/refresh.yml`.
-   Weekly cron Sundays 06:12 UTC plus `workflow_dispatch`. Runs the 5 steps, then verifies
-   in a real browser, and only commits if that passes - a failed run leaves the site on the
-   last good data. §12 still holds the open question this answers: whether Actions runners
-   can reach the iNat API.
+3. **Refresh automation - DONE and proven on a runner** (2026-07-31).
+   `.github/workflows/refresh.yml`. Weekly cron Sundays 06:12 UTC plus `workflow_dispatch`.
+   Runs the 5 steps, then verifies in a real browser, and only commits if that passes - a
+   failed run leaves the site on the last good data. Three dispatches were watched end to
+   end: green in ~2m10s, all five steps plus verification, and a no-change run correctly
+   printing "Nothing changed - not committing". §12 records what the live runs found.
 
 4. **Deploy - DONE** (2026-07-31). **<https://gfmcloud.github.io/beetlewood-north-atlas/>**
 
@@ -476,13 +477,34 @@ and one of them was wrong out of the box:
   parses, and Actions is enabled. A second push registers it. Do not go hunting for a YAML
   bug when this happens.
 
+**What the first live runs found, 2026-07-31.** Three dispatches were watched end to end.
+
+- **Actions runners CAN reach the iNat API.** The long-standing open question is closed:
+  `total_results=1405` for observations and `4276` for `species_counts`, `ancestor_ids`
+  present on both, straight from the runner. No proxy, no allowlist, nothing needed.
+- **The pool was not deterministic, and it hid the fact.** `gap_pool.json` sorted on
+  `-count` alone. The median nearby count is 1, so most of the file is ties, and ties held
+  whatever order the API returned. The file changed on every run even when no record had -
+  which meant the "nothing changed" guard could never fire, the cron would have committed
+  noise weekly, and a real change would have been indistinguishable from reordering in the
+  diff. Now sorted on `(-count, name)`; two live pulls produce byte-identical output. The
+  ranking is unaffected, since rank comes from weight and count, not file position.
+- **A bare `git push` in CI loses the whole run.** Two dispatches overlapped and the second
+  was rejected with "fetch first" *after* completing the pull, rebuild and verification. The
+  commit step now rebases and retries. A weekly cron rarely races itself; it races a human
+  pushing at the wrong moment just as easily.
+- **Node 20 deprecation warnings** on `checkout@v4`, `setup-python@v5` and
+  `upload-artifact@v4`. Cosmetic today, but the pinned majors will need bumping.
+
 Still unverified:
 
-- Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
-  first run needs eyes on it, not an assumption. The workflow has a `workflow_dispatch`
-  trigger so a manual run can be watched before trusting the cron.
 - Whether `fetch_observations.py`'s empty-file and >10% shrink guards fire correctly. They
-  have never been triggered, only read.
+  have never been triggered, only read. The obvious test - pointing the fetcher at a bogus
+  user - would also mean deliberately writing a broken `farm_data.json`, so it has been left
+  alone rather than faked.
+- Whether the **scheduled** trigger fires as expected. Only `workflow_dispatch` has been
+  exercised. The first Sunday run is the proof, and GitHub deprioritises cron under load,
+  so expect it late rather than on the minute.
 
 ## 13. Prerequisites and verification
 
