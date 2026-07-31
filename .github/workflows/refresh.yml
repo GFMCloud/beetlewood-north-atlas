@@ -1,0 +1,145 @@
+# Weekly refresh: re-pull Roy's records from iNaturalist, rebuild the atlas, commit.
+#
+# Pages is in DEPLOY-FROM-A-BRANCH mode, which is not a detail. A push made with the default
+# GITHUB_TOKEN does not trigger other workflows, so an Actions-based Pages deploy would never
+# fire and the site would silently stop updating. Branch mode has no such problem: the commit
+# this job makes is served directly. See BUILD_SPEC section 2.
+#
+# THE JOB VERIFIES BEFORE IT COMMITS. If the pipeline's reconciliation assertions fail, or the
+# rebuilt page throws in a real browser, nothing is committed and the site stays on the last
+# good data. A cron that fails loudly beats one that quietly publishes a broken atlas.
+#
+# No credentials. The iNat API is public read (BUILD_SPEC section 13). The only token here is
+# the automatic GITHUB_TOKEN, used to push the refreshed data back.
+name: Weekly refresh
+
+on:
+  schedule:
+    # 06:12 UTC every Sunday. Off the hour on purpose - the top of the hour is when every
+    # other cron on GitHub fires and runs get queued.
+    - cron: '12 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      allow_shrink:
+        description: 'Permit a >10% drop in observation count (investigate first)'
+        type: boolean
+        default: false
+
+# The weekly commit is what Pages serves. Without write access this job runs GREEN, commits
+# nothing, and the site quietly stops updating - BUILD_SPEC section 13 calls this the nastiest
+# of the three silent failures. Note this only lowers a ceiling: if the REPO setting is
+# "read repository contents", declaring write here does not grant it.
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pipeline is stdlib-only by design (BUILD_SPEC section 13) - no pip, no
+      # requirements.txt, no venv. Do not add a dependency to it without reading that section.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check the API is reachable and unchanged in shape
+        run: |
+          echo "BUILD_SPEC section 12 lists Actions egress to api.inaturalist.org as"
+          echo "unverified. This step is where that gets answered, cheaply, before a full"
+          echo "pull spends four minutes finding out."
+          python3 scripts/fetch_observations.py --check
+          python3 scripts/fetch_gap_pool.py --check
+
+      # Steps 0-5. Order matters: everything downstream reads farm_data.json and none of the
+      # other scripts produce it. The taxonomy and taxa caches are committed to the repo, so a
+      # weekly run is a warm cache - roughly 25 requests against iNat's ~10k/day allowance.
+      - name: Step 0 - observations
+        run: |
+          python3 scripts/fetch_observations.py \
+            ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
+
+      - name: Step 1 - taxonomy
+        run: python3 scripts/fetch_taxonomy.py
+
+      - name: Step 2 - interest
+        # Recency is anchored to --asof, default today. Leaving it at the default is the
+        # point: a frozen anchor stops decaying the moment the cron starts running and
+        # nothing would surface the drift. BUILD_SPEC section 6.
+        run: python3 scripts/build_interest.py
+
+      - name: Step 3 - tree (reconciliation assertions)
+        run: python3 scripts/build_tree.py
+
+      - name: Step 4 - gap pool
+        run: python3 scripts/fetch_gap_pool.py
+
+      - name: Step 5 - build pages (offline-safety assertions)
+        run: python3 scripts/build_pages.py
+
+      # Playwright is a dev/CI tool, deliberately NOT a pipeline dependency. It runs here
+      # because a page that parses fine and throws on load is exactly what the assertions
+      # above cannot catch.
+      - name: Install a headless browser for verification
+        run: |
+          pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
+
+      - name: Verify the rebuilt atlas renders
+        run: python3 scripts/screenshot.py --tabs index.html explore/*.html
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: shots/
+          retention-days: 30
+
+      - name: Summarise the refresh
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          def load(p):
+              f = pathlib.Path('data') / p
+              return json.loads(f.read_text()) if f.exists() else {}
+          m = load('farm_data.json').get('meta', {})
+          t = load('tree_data.json')
+          g = load('gap_pool.json').get('meta', {})
+          def n(v):
+              return f'{v:,}' if isinstance(v, int) else '?'
+          print('## Beetlewood refresh\n')
+          print('| | |\n|---|---|')
+          print(f"| Observations | {n(m.get('total_obs'))} |")
+          print(f"| Species on the farm | {n(m.get('total_species'))} |")
+          print(f"| Taxa in the tree | {n(t.get('tree', {}).get('d'))} |")
+          print(f"| Life list | {n(m.get('life_list_species'))} |")
+          print(f"| Nearby pool | {n(g.get('pool_size'))} |")
+          print(f"| Data generated | {m.get('generated', '?')} |")
+          print('\nCounts move every run - Roy logs actively. What must hold is that the ')
+          print('reconciliation assertions in step 3 passed, which they did or this ')
+          print('summary would not have been reached with the pipeline green.')
+          PY
+
+      - name: Commit the refreshed data and rebuilt pages
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A data explore index.html
+          if git diff --cached --quiet; then
+            echo "Nothing changed - no new observations since the last run. Not committing."
+            exit 0
+          fi
+          git diff --cached --stat
+          git commit -m "Weekly refresh $(date -u +%Y-%m-%d)
+
+          Automated. Re-pulled from the iNaturalist API, rebuilt the atlas, verified it
+          renders. Reconciliation assertions passed before this was committed."
+          git push

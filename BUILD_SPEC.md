@@ -88,6 +88,8 @@ README.md          human orientation
 BUILD_SPEC.md      this file - the source of truth
 KICKOFF.md         the prompt to paste into Claude Code
 index.html         THE PRODUCT - the assembled atlas  (GENERATED, ~990 KB)
+.github/workflows/
+  refresh.yml      weekly cron - runs the 5 steps, verifies, then commits
 scripts/           the pipeline (see scripts/README.md)
   inat.py                shared API helpers + the farm scope constants
   fetch_observations.py  step 0  (network)
