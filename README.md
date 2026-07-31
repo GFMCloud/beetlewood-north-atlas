@@ -1,5 +1,7 @@
 # Beetlewood Farms North Atlas
 
+### → <https://gfmcloud.github.io/beetlewood-north-atlas/>
+
 Interactive atlas over Roy Morris's (`roymorrisii`) iNaturalist records, scoped to his 6 acre
 farm in Griffin, GA. Five views: an Overview, a taxonomic Tree of Life, a seasonal phenology
 calendar, a data derived "what he logs" interest profile, and a gap checklist of nearby
@@ -10,8 +12,8 @@ Read it before changing anything.
 
 ## Status
 
-**Assembled, not yet deployed.** The app is built and running on real data; what remains is
-the weekly refresh job and the deploy.
+**Live.** Deployed to GitHub Pages 2026-07-31, refreshed weekly by
+`.github/workflows/refresh.yml`. Roy only ever opens the URL above - he never runs anything.
 
 - `index.html` - **the atlas.** Five tabs, self contained, ~990 KB, opens by double click.
   Generated - edit `scripts/templates/tpl_atlas.html`, never this.
@@ -24,9 +26,10 @@ the weekly refresh job and the deploy.
 - `archive/explorations.html` - radial tree + co-occurrence brain map. Not in the product,
   kept because the co-occurrence lens is the strongest candidate for a future tab.
 
-Remaining: a weekly GitHub Actions cron running the pipeline and committing the refreshed
-JSON plus rebuilt pages, then GitHub Pages in deploy-from-a-branch mode. BUILD_SPEC §13 lists
-three Pages/Actions settings that fail **silently** if wrong - read it before deploying.
+The weekly job re-pulls from the iNaturalist API, rebuilds, **verifies the page renders in a
+real browser, and only then commits** - a failed run leaves the site on the last good data.
+BUILD_SPEC §13 lists three Pages/Actions settings that fail **silently** if wrong; one of them
+(Actions permissions) defaulted to read-only and had to be changed. §12 records the rest.
 
 ## Layout
 

@@ -69,12 +69,18 @@ invariant is that the totals reconcile, which `build_tree.py` asserts. His full 
 2. **Gap checklist - DONE.** `fetch_gap_pool.py` has now run in full. Numbers and the
    `COUNT_EXP` decision are in §7.
 
-3. **Refresh automation - NOT STARTED.** Weekly Actions cron running the 5 step pipeline,
-   committing refreshed JSON + rebuilt pages. §12 flags the one thing only this can settle:
-   whether Actions runners can reach the iNat API.
+3. **Refresh automation - WRITTEN, FIRST RUN PENDING.** `.github/workflows/refresh.yml`.
+   Weekly cron Sundays 06:12 UTC plus `workflow_dispatch`. Runs the 5 steps, then verifies
+   in a real browser, and only commits if that passes - a failed run leaves the site on the
+   last good data. §12 still holds the open question this answers: whether Actions runners
+   can reach the iNat API.
 
-4. **Deploy - NOT STARTED.** Create the repo, set the three settings in §13, hand Graham
-   the URL.
+4. **Deploy - DONE** (2026-07-31). **<https://gfmcloud.github.io/beetlewood-north-atlas/>**
+
+   Repo `GFMCloud/beetlewood-north-atlas`, public, Pages serving `master` at `/` in
+   deploy-from-a-branch mode. Verified live: HTTP 200, 1,015,497 bytes (exactly
+   `index.html`), all five tabs render, 1,939 sunburst paths, 50 gap rows, zero console
+   errors.
 
 **The output is `index.html`, not `atlas.html`.** Pages in deploy-from-a-branch mode serves
 the repo root, so the file has to be `index.html` for Roy to get a bare URL rather than one
@@ -453,11 +459,28 @@ Since verified, same day:
 - **The offline photo fallback works.** With every HTTP request blocked, the tree renders and
   12 taxon photos fall back to the "photo offline" placeholder with zero JS errors.
 
+**Deploy-time findings, 2026-07-31.** All three §13 settings were checked rather than assumed,
+and one of them was wrong out of the box:
+
+- **Actions workflow permissions defaulted to `read`.** This is the failure §13 calls the
+  nastiest - the weekly job would have run green, committed nothing, and the site would have
+  quietly stopped updating. Set to `write` via
+  `gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=write`.
+  Declaring `permissions: contents: write` in the workflow does **not** fix this; the repo
+  setting is a ceiling, not a default.
+- Pages source is `legacy` build type, branch `master`, path `/` - deploy-from-a-branch, as
+  §2 requires. Confirmed with `gh api repos/OWNER/REPO/pages`.
+- Repo is public.
+- **A newly pushed workflow is not registered by the push that creates the repo.**
+  `gh workflow run` returns "not found on the default branch" even though the file is present,
+  parses, and Actions is enabled. A second push registers it. Do not go hunting for a YAML
+  bug when this happens.
+
 Still unverified:
 
 - Whether GitHub Actions runners can reach the iNat API. Expected yes (open egress), but the
-  first run needs eyes on it, not an assumption. Give the workflow a `workflow_dispatch`
-  trigger and watch one manual run before trusting the cron.
+  first run needs eyes on it, not an assumption. The workflow has a `workflow_dispatch`
+  trigger so a manual run can be watched before trusting the cron.
 - Whether `fetch_observations.py`'s empty-file and >10% shrink guards fire correctly. They
   have never been triggered, only read.
 
