@@ -180,6 +180,28 @@ button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var
 .more{margin-top:14px; text-align:center}
 .empty{padding:26px 4px; color:var(--ink-3); font-size:13.5px; text-align:center}
 
+/* ═══ County records ═════════════════════════════════════════════════════════ */
+.crow{
+  display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center;
+  padding:10px 14px; border:1px solid var(--line); border-left-width:3px; border-radius:10px;
+  margin-bottom:7px; background:var(--panel);
+}
+.crow .nm{font-size:14px; font-weight:600}
+.crow .nm a{color:inherit; text-decoration:none; border-bottom:1px solid transparent}
+.crow .nm a:hover{color:var(--accent); border-bottom-color:var(--accent)}
+.crow .nm i{font-weight:400; color:var(--ink-2)}
+.crow .meta{font-size:12px; color:var(--ink-3); margin-top:2px}
+/* Same treatment as .pill.lifer deliberately: accent-on-accent-soft is the one
+   already-shipping combination whose contrast holds in both themes, and the two pills
+   never appear on the same tab. */
+.pill.sole{border-color:var(--accent); color:var(--accent); background:var(--accent-soft); font-weight:600}
+.ctx{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel-2)}
+.ctx div{padding:4px 11px; text-align:center; min-width:62px}
+.ctx div+div{border-left:1px solid var(--line)}
+.ctx .v{font-size:13px; font-weight:650; font-variant-numeric:tabular-nums; color:var(--ink)}
+.ctx .k{font-size:10px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; margin-top:1px}
+@media (max-width:640px){ .crow{grid-template-columns:1fr} }
+
 /* ═══ Tree of Life - shared frame ════════════════════════════════════════════ */
 .viewbar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px}
 .viewbar .hint{font-size:12.5px; color:var(--ink-3)}
@@ -361,6 +383,7 @@ button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var
 
   <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="county">County Records</button>
     <button class="tab" data-tab="tree">Tree of Life</button>
     <button class="tab" data-tab="season">Seasonal Calendar</button>
     <button class="tab" data-tab="interest">What He Logs</button>
@@ -377,6 +400,7 @@ button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var
         Each step up is a species recorded here for the first time. The line is still
         climbing steeply — the survey is young and nowhere near saturated.</p>
       <div class="scrollx" id="accum"></div>
+      <div class="note" id="accumNote"></div>
     </div>
 
     <div class="card">
@@ -386,6 +410,42 @@ button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var
         class, which is why the tree skips a rank there.</p>
       <div id="classBars"></div>
       <div class="note" id="scopeNote"></div>
+    </div>
+  </section>
+
+  <!-- ════════════ COUNTY RECORDS ════════════ -->
+  <section class="panel" id="panel-county">
+    <div class="stats" id="countyTiles"></div>
+
+    <div class="card">
+      <h2>What this property has contributed</h2>
+      <p class="desc">Every species here, set against how often it has been recorded in the
+        county and across the state. A species he has photographed forty times is ordinary;
+        one whose <b>only</b> county record is his is a line in the county's fauna that
+        exists because he walked out and looked. Sorted with the sole records first, then
+        by how scarce the species is statewide.</p>
+      <div class="controls">
+        <div class="fld"><label for="cOnly">Show</label>
+          <select id="cOnly">
+            <option value="sole">Only his in the county</option>
+            <option value="all">Every species on the farm</option>
+          </select></div>
+        <div class="fld"><label for="cScarce">Statewide records</label>
+          <select id="cScarce">
+            <option value="0">Any</option>
+            <option value="10">Under 10</option>
+            <option value="50">Under 50</option>
+            <option value="200">Under 200</option>
+          </select></div>
+        <div class="fld"><label for="cGroup">Group</label>
+          <select id="cGroup"></select></div>
+        <div class="fld"><label for="cFind">Find</label>
+          <input id="cFind" type="search" placeholder="scientific or common name" autocomplete="off"></div>
+      </div>
+      <p class="gapcount" id="countyCount"></p>
+      <div id="countyList"></div>
+      <div class="more"><button class="ghost" id="countyMore">Show 50 more</button></div>
+      <div class="note" id="countyNote"></div>
     </div>
   </section>
 
@@ -489,10 +549,17 @@ button.ghost:hover{background:var(--panel-2); color:var(--ink); border-color:var
         farm that he has not logged — ranked by his own interest profile, so the top of the
         list is "findable near here, in the groups you actually work on".</p>
       <div class="controls">
+        <!-- The county option stays disabled, but the label was also WRONG: the postal
+             address is "Lamar County Line Rd" in Griffin and Griffin is in Spalding, so
+             the plausible guess was the wrong side of the line. Every farm record is in
+             LAMAR - confirmed against place_ids on 600 of them. The county pool now
+             exists in data/county.json (863 taxa others have recorded there and he has
+             not); what it still lacks is the family/order names the §7 interest weighting
+             and the group filter both need, so enabling it would ship an unranked list. -->
         <div class="fld"><label for="gScope">Scope</label>
           <select id="gScope">
             <option value="radius">Radius around the farm</option>
-            <option value="county" disabled>Spalding County, GA — needs a place lookup</option>
+            <option value="county" disabled>Lamar County, GA — needs family ranking</option>
           </select></div>
         <div class="fld"><label for="gNew">Not yet logged…</label>
           <select id="gNew">
@@ -638,14 +705,17 @@ document.getElementById('farmSub').innerHTML =
   `<b>${esc(M.place_guess)}</b> · observer <b>${esc(M.user_login)}</b> · ${M.year_min}–${M.year_max}`;
 
 const rg = M.total_obs ? Math.round((M.quality.research || 0) / M.total_obs * 100) : 0;
+const R = D.overview.richness, CM = D.county.meta;
 document.getElementById('statTiles').innerHTML = [
   [num(M.total_obs), 'Observations'],
   [num(M.total_species), 'Species on the farm'],
+  R && R.est ? [R.pct + '<small>%</small>', 'Of the species estimated here'] : null,
+  [num(CM.sole_on_farm), 'Only his in ' + CM.county_name],
   [rg + '<small>%</small>', 'Research grade'],
-  [num(M.taxa_in_tree), 'Taxa in the tree'],
   [String(M.year_max - M.year_min + 1), 'Seasons logged'],
   [num(M.life_list_species), 'Life list (everywhere)'],
-].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('');
+].filter(Boolean)
+ .map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('');
 
 document.getElementById('scopeNote').innerHTML =
   `The farm is a <b>${M.radius_km} km radius</b> around ${M.lat}, ${M.lng} — measured, not
@@ -672,9 +742,15 @@ const pts = D.overview.accum;
 
 (function accumulation(){
   if (!pts.length) return;
+  // The estimate is a horizontal reference, not a forecast: Chao2 says how many species
+  // are here, never when he will find them. Drawing it as a flat band rather than an
+  // extrapolated curve is the whole point - a sloped projection would imply a date.
+  const R = D.overview.richness;
+  const est = (R && R.est) ? R : null;
   const W = 900, H = 260, padL = 46, padR = 16, padT = 14, padB = 30;
   const t0 = Date.parse(pts[0][0]), t1 = Date.parse(pts[pts.length - 1][0]);
-  const ymax = pts[pts.length - 1][1];
+  const found = pts[pts.length - 1][1];
+  const ymax = est ? est.hi : found;
   const span = Math.max(1, t1 - t0);
   const X = d => padL + (Date.parse(d) - t0) / span * (W - padL - padR);
   const Y = v => H - padB - (v / ymax) * (H - padB - padT);
@@ -701,17 +777,51 @@ const pts = D.overview.accum;
     ax += `<text class="axis" x="${padL - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${v}</text>`;
   });
 
+  let band = '';
+  if (est) {
+    const yHi = Y(est.hi), yLo = Y(est.lo), yEst = Y(est.est);
+    band = `
+      <rect x="${padL}" y="${yHi.toFixed(1)}" width="${(W - padL - padR).toFixed(1)}"
+            height="${Math.max(1, yLo - yHi).toFixed(1)}" fill="var(--ink-3)" fill-opacity=".10"/>
+      <line x1="${padL}" y1="${yEst.toFixed(1)}" x2="${W - padR}" y2="${yEst.toFixed(1)}"
+            stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text class="axis" x="${W - padR}" y="${(yEst - 7).toFixed(1)}" text-anchor="end"
+            style="fill:var(--ink-2);font-weight:600">≈ ${num(est.est)} estimated to be here</text>`;
+  }
+
+  const aria = est
+    ? `Cumulative distinct species over time, reaching ${num(found)} of an estimated ${
+        num(est.est)} present, with a 95% interval from ${num(est.lo)} to ${num(est.hi)}`
+    : `Cumulative distinct species over time, ending at ${num(found)}`;
+
   document.getElementById('accum').innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:560px" role="img"
-          aria-label="Cumulative distinct species over time, ending at ${ymax}">
+          aria-label="${aria}">
        ${ax}
+       ${band}
        <path d="${area}" fill="var(--accent)" fill-opacity=".12"/>
        <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
              stroke-linejoin="round"/>
-       <circle cx="${X(last[0]).toFixed(1)}" cy="${Y(ymax).toFixed(1)}" r="4" fill="var(--accent)"/>
-       <text x="${(X(last[0]) - 10).toFixed(1)}" y="${(Y(ymax) + 18).toFixed(1)}" text-anchor="end"
-             style="fill:var(--ink);font-size:12.5px;font-weight:600">${num(ymax)} species</text>
+       <circle cx="${X(last[0]).toFixed(1)}" cy="${Y(found).toFixed(1)}" r="4" fill="var(--accent)"/>
+       <text x="${(X(last[0]) - 10).toFixed(1)}" y="${(Y(found) + 18).toFixed(1)}" text-anchor="end"
+             style="fill:var(--ink);font-size:12.5px;font-weight:600">${num(found)} found</text>
      </svg>`;
+
+  if (est) document.getElementById('accumNote').innerHTML =
+    `The dashed line is a <b>Chao2 estimate</b>: ${num(est.est)} species present, of which
+     he has found <b>${est.pct}%</b>. It is inferred from the shape of the rare tail —
+     ${num(est.q1)} species have turned up on only one of his ${num(est.days)} recording days
+     and ${num(est.q2)} on exactly two, and a survey still producing that many one-offs is
+     nowhere near finished. The band is the 95% interval, ${num(est.lo)}–${num(est.hi)}.
+     <br><br><b>Read it as a floor, not a forecast.</b> Chao estimators assume a closed
+     population sampled at random, and neither holds on a working farm: species move across
+     the boundary, and he photographs what interests him, at a light sheet, in warm weather.
+     Both violations hide species rather than invent them, so the true figure is likely
+     higher — which is exactly what a Chao2 number is defined to be, a lower bound. It says
+     nothing about <i>when</i> anything gets found. The day, not the observation, is the
+     sampling unit here, so one good sheet night counts once rather than being counted once
+     per photograph; computed per record instead it gives ${num(est.chao1)}, a difference of
+     ${(Math.abs(est.chao1 - est.est) / est.est * 100).toFixed(1)}%.`;
 })();
 
 (function composition(){
@@ -893,6 +1003,127 @@ document.getElementById('interestRank').addEventListener('click', e => {
 });
 document.getElementById('interestMore').addEventListener('click', () => { showAll = !showAll; draw(); });
 draw();
+});
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   County records. The sole-observer determination is made offline in
+   fetch_county.py by comparing LINEAGES, not taxon ids - this only filters and
+   renders what that produced. BUILD_SPEC section 16.
+   ═════════════════════════════════════════════════════════════════════════════ */
+ATLAS.onFirstShow('county', function(){
+"use strict";
+const {D, esc, num, colorVar, bindTip} = ATLAS;
+const C = D.county, ROWS = C.rows, CM = C.meta;
+const PAGE = 50;
+let shown = PAGE;
+
+document.getElementById('countyTiles').innerHTML = [
+  [num(CM.sole_on_farm), 'Only his in the county'],
+  [num(CM.county_taxa), CM.county_name + ' species, all time'],
+  [Math.round(CM.his_county_obs / CM.county_obs * 100) + '<small>%</small>',
+   'Of every county record'],
+  [num(CM.state_taxa), CM.state_name + ' species, all time'],
+].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('');
+
+(function groupOptions(){
+  const g = new Map();
+  ROWS.forEach(r => g.set(r.ic, (g.get(r.ic) || 0) + 1));
+  document.getElementById('cGroup').innerHTML = `<option value="">All groups</option>` +
+    [...g.entries()].sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `<option value="${esc(k)}">${esc(k)} (${n})</option>`).join('');
+})();
+
+function filtered(){
+  const only = document.getElementById('cOnly').value;
+  const scarce = +document.getElementById('cScarce').value;
+  const group = document.getElementById('cGroup').value;
+  const q = document.getElementById('cFind').value.trim().toLowerCase();
+  return ROWS.filter(r => {
+    if (only === 'sole' && !r.so) return false;
+    if (scarce && r.s >= scarce) return false;
+    if (group && r.ic !== group) return false;
+    if (q && !(r.n.toLowerCase().includes(q) || r.cm.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function render(){
+  const rows = filtered();
+  const slice = rows.slice(0, shown);
+  const only = document.getElementById('cOnly').value;
+
+  document.getElementById('countyCount').innerHTML = rows.length
+    ? `Showing <b>${num(slice.length)}</b> of <b>${num(rows.length)}</b> species${
+        only === 'sole' ? ` whose only ${esc(CM.county_name)} records are his` : ' on the farm'}.`
+    : `Nothing matches those filters.`;
+
+  document.getElementById('countyList').innerHTML = rows.length ? slice.map((r, i) => `
+    <div class="crow" data-i="${i}" style="border-left-color:${colorVar(r.pc)}">
+      <div>
+        <div class="nm"><a href="https://www.inaturalist.org/taxa/${r.t}" target="_blank"
+          rel="noopener">${r.cm ? esc(r.cm) + ' <i>' + esc(r.n) + '</i>'
+                                : '<i>' + esc(r.n) + '</i>'}</a>${
+          r.so ? '<span class="pill sole">only his</span>' : ''}</div>
+        <div class="meta">${esc(r.ic)}</div>
+      </div>
+      <div class="ctx">
+        <div><div class="v">${num(r.r)}</div><div class="k">his</div></div>
+        <div><div class="v">${num(r.c)}</div><div class="k">county</div></div>
+        <div><div class="v">${num(r.s)}</div><div class="k">state</div></div>
+      </div>
+    </div>`).join('') : `<div class="empty">Nothing matches those filters.</div>`;
+
+  document.querySelectorAll('#countyList .crow').forEach(el => {
+    const r = slice[+el.dataset.i];
+    const share = r.c ? Math.round(r.r / r.c * 100) : 0;
+    bindTip(el, `<div class="tip-t">${esc(r.n)}</div>
+      <div class="tip-r">${esc(r.ic)}${r.rk ? ' · ' + esc(r.rk) : ''}</div>
+      <div class="tip-v">${num(r.r)} of the ${num(r.c)} records in ${esc(CM.county_name)}
+        are his (${share}%)<br>${num(r.s)} records across ${esc(CM.state_name)}<br>${
+        r.so ? '<b>No one else has recorded it in this county.</b>' : ''}</div>`);
+  });
+
+  const more = document.getElementById('countyMore');
+  more.hidden = rows.length <= shown;
+  more.textContent = `Show ${Math.min(PAGE, rows.length - shown)} more`;
+}
+
+['cOnly', 'cScarce', 'cGroup', 'cFind'].forEach(id =>
+  document.getElementById(id).addEventListener('input', () => { shown = PAGE; render(); }));
+document.getElementById('countyMore').addEventListener('click', () => { shown += PAGE; render(); });
+ATLAS.onTheme(render);
+
+document.getElementById('countyNote').innerHTML =
+  `<b>"Only his" is decided by lineage, not by taxon id.</b> iNaturalist reports each
+   observation at the finest rank anyone has identified it to, so his genus-level
+   <i>Xanthotype</i> and someone else's <i>Xanthotype urticaria</i> arrive as two unrelated
+   ids for one lineage. Across all of his ${esc(CM.county_name)} records, subtracting ids
+   alone claimed ${num(CM.sole_id_only)} sole taxa against the ${num(CM.sole_taxa)} the
+   lineage comparison finds. When the two were first compared, the id-only figure implied
+   the county held more species than it does, which is how the error was originally caught;
+   that contradiction is asserted on every run. The <b>${num(CM.sole_on_farm)}</b> above are the subset of
+   those that are species rank <i>and</i> on the farm. Where another observer has a
+   genus-only record that <i>might</i> be his species, it counts as not sole; the figure
+   understates rather than overstates.
+   <br><br><b>This tab counts species, and says so because the alternative was wrong
+   numbers.</b> iNaturalist's species aggregation reports leaf taxa only, so an observation
+   identified no further than a genus is absent from it entirely — at the 2026-08-12 pull,
+   three of the four hickory records in ${esc(CM.county_name)} were genus-level and none of
+   those three appeared. Two groups
+   of farm taxa are therefore left out: <b>${num(CM.no_county_row)}</b> with no county row
+   at all (${num(CM.no_county_row_needs_id)} still <i>needs ID</i>), and
+   <b>${num(CM.above_species)}</b> identified above species rank, whose county and state
+   figures the endpoint understates.
+   <br><br><b>The method was validated on 2026-08-12</b>, against the data present that day:
+   every species-rank row was reconciled with the live observation search, and a random
+   sample of a dozen sole-observer claims held without exception. This page rebuilds weekly
+   from fresh data, so that check covers the method rather than the rows you are reading —
+   the arithmetic below is recomputed every run, but nobody re-samples it by hand.
+   <br><br>${esc(CM.county_name)} totals cover every observer since iNaturalist began, and
+   ${num(CM.his_county_taxa - CM.matched - CM.above_species)} of his county taxa were
+   recorded elsewhere in the county rather than on the farm.`;
+
+render();
 });
 
 /* ═════════════════════════════════════════════════════════════════════════════

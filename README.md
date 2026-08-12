@@ -15,9 +15,9 @@ Read it before changing anything.
 **Live.** Deployed to GitHub Pages 2026-07-31, refreshed weekly by
 `.github/workflows/refresh.yml`. Roy only ever opens the URL above - he never runs anything.
 
-- `index.html` - **the atlas.** Five tabs, self contained, ~990 KB, opens by double click.
+- `index.html` - **the atlas.** Six tabs, self contained, ~1.1 MB, opens by double click.
   Generated - edit `scripts/templates/tpl_atlas.html`, never this.
-- `scripts/` - 5 step pipeline, working. Offline steps run in under a second.
+- `scripts/` - 6 step pipeline, working. Offline steps run in under a second.
 - `explore/explorer-2pane.html`, `explore/sunburst-zoom.html` - the two taxonomy views as
   standalone pages. The atlas ports both into its Tree of Life tab; these are still generated
   because a single view is sometimes the thing you want.

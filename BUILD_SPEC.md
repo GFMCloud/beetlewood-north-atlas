@@ -9,9 +9,20 @@ into contradicting each other on every locked decision.
 ## 1. The project
 
 An interactive atlas over one iNaturalist observer's records, scoped to a single property.
-Roy F Morris II (`roymorrisii`, user_id 764712) is an entomologist specialising in longhorn
+Roy F Morris II (`roymorrisii`, user_id 532376) is an entomologist specialising in longhorn
 beetles; the property is his ~6 acre farm "Beetlewood Farms North", 376 Lamar County Line Rd,
-Griffin, GA (lat 33.18, lng -84.20). Roy is Graham's dad.
+Griffin, GA (lat 33.18, lng -84.20), in **Lamar County**. Roy is Graham's dad.
+
+Two identifiers in earlier drafts of this document were wrong, both in ways that fail
+silently rather than loudly, and both are fixed above:
+
+- **user_id was 764712**, which is the id of his CSV *export job* (`observations764712.csv`),
+  not of him. `species_counts?user_id=764712` returns 0 results rather than an error.
+  Nothing read it, because every fetcher passes `user_login`.
+- **The county is Lamar, not Spalding.** The postal address is "Lamar County Line Rd" and
+  the town is Griffin, which *is* in Spalding - so the plausible guess is the wrong side of
+  the line. Confirmed against `place_ids` on 600 farm records: 600 of 600 in Lamar.
+  `tpl_atlas.html` shipped a disabled "Spalding County, GA" option on that bad reasoning.
 
 **Two scopes, and they are not the same number.** The farm itself is a 2 km radius
 (`FARM_RADIUS_KM`); "what other people record nearby", used only for the gap pool, is 15 km
@@ -52,9 +63,12 @@ invariant is that the totals reconcile, which `build_tree.py` asserts. His full 
 
 ## 3. State of the build
 
-1. **Atlas shell - DONE** (2026-07-31). One self contained SPA at `index.html`, generated
-   from `scripts/templates/tpl_atlas.html` through `build_pages.py`. Tabs:
-   - **Overview** - stat tiles + species accumulation curve.
+1. **Atlas shell - DONE** (2026-07-31, sixth tab added 2026-08-11). One self contained SPA
+   at `index.html`, generated from `scripts/templates/tpl_atlas.html` through
+   `build_pages.py`. Tabs:
+   - **Overview** - stat tiles + species accumulation curve, now carrying the Chao2
+     richness estimate as a reference band (§16).
+   - **County Records** - what the property has contributed to Lamar County's fauna (§16).
    - **Tree of Life** - one tab, Explorer <-> Sunburst toggle, Explorer the default. Both
      `explore/` views ported rather than rebuilt; §8 records how.
    - **Seasonal Calendar** - phenology heatmap + stacked monthly bars.
@@ -71,10 +85,12 @@ invariant is that the totals reconcile, which `build_tree.py` asserts. His full 
 
 3. **Refresh automation - DONE and proven on a runner** (2026-07-31).
    `.github/workflows/refresh.yml`. Weekly cron Sundays 06:12 UTC plus `workflow_dispatch`.
-   Runs the 5 steps, then verifies in a real browser, and only commits if that passes - a
-   failed run leaves the site on the last good data. Three dispatches were watched end to
-   end: green in ~2m10s, all five steps plus verification, and a no-change run correctly
-   printing "Nothing changed - not committing". §12 records what the live runs found.
+   Runs the pipeline steps, then verifies in a real browser, and only commits if that
+   passes - a failed run leaves the site on the last good data. Three dispatches were
+   watched end to end: green in ~2m10s, all five steps plus verification, and a no-change
+   run correctly printing "Nothing changed - not committing". §12 records what the live
+   runs found. **Step 4b was added 2026-08-11 and has not yet been watched on a runner**;
+   it adds ~60 requests and roughly three minutes, mostly paging Georgia.
 
 4. **Deploy - DONE** (2026-07-31). **<https://gfmcloud.github.io/beetlewood-north-atlas/>**
 
@@ -96,7 +112,7 @@ BUILD_SPEC.md      this file - the source of truth
 KICKOFF.md         the prompt to paste into Claude Code
 index.html         THE PRODUCT - the assembled atlas  (GENERATED, ~990 KB)
 .github/workflows/
-  refresh.yml      weekly cron - runs the 5 steps, verifies, then commits
+  refresh.yml      weekly cron - runs every pipeline step, verifies, then commits
 scripts/           the pipeline (see scripts/README.md)
   inat.py                shared API helpers + the farm scope constants
   fetch_observations.py  step 0  (network)
@@ -104,12 +120,13 @@ scripts/           the pipeline (see scripts/README.md)
   build_interest.py      step 2  (offline)
   build_tree.py          step 3  (offline)
   fetch_gap_pool.py      step 4  (network)
+  fetch_county.py        step 4b (network) - county + statewide context, §16
   build_pages.py         step 5  (offline) - also composes the atlas payload
   screenshot.py          verification helper, NOT a pipeline step
   templates/         tpl_explorer.html, tpl_sunburst.html, tpl_atlas.html
   vendor/            d3.v7.min.js (v7.9.0)
 data/              farm_data.json, taxonomy.json, interest.json, tree_data.json,
-                   gap_pool.json, taxa_cache.json
+                   gap_pool.json, county.json, taxa_cache.json
                    NO CSV HERE - the export carries obscured-species coordinates and is
                    gitignored and kept outside the repo. See §11.
 explore/           explorer-2pane.html, sunburst-zoom.html  (GENERATED)
@@ -128,7 +145,8 @@ archive/           explorations.html - radial tree + brain map, not in the produ
 | 2 | `build_interest.py` | farm + taxonomy -> `data/interest.json` | no |
 | 3 | `build_tree.py` | farm + taxonomy -> `data/tree_data.json` | no |
 | 4 | `fetch_gap_pool.py` | iNat API -> `data/gap_pool.json` | yes |
-| 5 | `build_pages.py` | all four JSONs + D3 -> `explore/*.html` **and `index.html`** | no |
+| 4b | `fetch_county.py` | iNat API -> `data/county.json` | yes |
+| 5 | `build_pages.py` | all five JSONs + D3 -> `explore/*.html` **and `index.html`** | no |
 
 Run in that order. Conventions the pipeline enforces and you must keep:
 
@@ -276,8 +294,11 @@ Numbers at the 2026-07-31 pull, dated like every other count here: pool **1,807*
 appear in the pool and 231 of them carry a multiplier - the other 249 sit at the class
 baseline of 1.0.
 
-UI as built: scope (radius; the Spalding County option is present but disabled, because
-county needs a `place_id` from `/places/autocomplete`), not-yet-logged (anywhere -> subtract
+UI as built: scope (radius; the county option is present but disabled - it was mislabelled
+"Spalding County" until 2026-08-11 and the place lookup it was waiting on now exists as
+§16's `county.json`, whose `pool` holds the 861 taxa others have recorded in Lamar and he
+has not. What still blocks it is that the pool carries no family or order names, which both
+the weighting above and the group filter require), not-yet-logged (anywhere -> subtract
 `life_taxa` ∪ `farm_taxa` | on farm -> subtract `farm_taxa`), group filter (iconic group or
 order, both with counts, from the baked pool), min nearby count, and a free-text filter over
 name/common/family/order. Each row shows the weight that drove its rank; the hover shows the
@@ -418,7 +439,9 @@ Ranks present: `root, class, order, family, genus, species`, plus `stub` and `un
   relevant "if a map view is ever added" and asserted in §13 that all his data was already
   public. Both were wrong, and together they would have shipped the file.
 - **What the built site does expose:** the farm centre, `33.18, -84.20`, and nothing else.
-  No per-observation coordinates exist in any of the four JSONs - `farm_data.json`
+  No per-observation coordinates exist in any of the six JSONs - `county.json` is taxon
+  aggregates only (id, names, rank, three counts, a flag) and carries no geography beyond
+  the county and state place ids; `farm_data.json`
   observations carry `d m y cls g sci com tid q img url`. Verify before any future push:
 
       python3 -c "import re,pathlib; print(sorted(set(re.findall(r'\"(?:lat|lng)\":(-?\d+\.?\d*)', pathlib.Path('index.html').read_text()))))"
@@ -630,3 +653,114 @@ move the refresh to a fixed-IP runner.
 for observations: iNat generates CSV exports on request and emails them, which CI cannot
 automate. The API is the only automatable source. Our volume is ordinary API use, not bulk
 extraction.
+
+## 16. County records and the richness estimate
+
+Added 2026-08-11. Two features that answer questions the rest of the atlas cannot: not
+"what is here" but "what does having it here mean", and "how much is left".
+
+### 16.1 What the property has contributed
+
+`fetch_county.py` -> `data/county.json` -> the **County Records** tab.
+
+| figure | value at 2026-08-11 |
+|---|---|
+| Lamar County taxa, all observers, all time | 1,896 |
+| ...recorded by Roy | 1,024 (54%) |
+| County observations, all observers | 5,480 |
+| ...his | 1,904 (35%) |
+| Taxa whose only county records are his | **607** |
+| ...that are species rank AND on the farm - what the tab lists | **483** |
+| Georgia taxa, all observers | 23,590 |
+
+**Sole-observer status is decided by lineage, never by taxon id.** `species_counts` reports
+each observation at the finest rank available *within that query*, so his genus-level
+`Xanthotype` and someone else's `Xanthotype urticaria` come back as unrelated ids for one
+lineage. A taxon of his counts as sole only when no other observer's taxon touches its
+lineage in either direction - not the same taxon, not a descendant, not an ancestor. The
+ancestor case is deliberately conservative: another observer's genus-only record might be
+his species, so it counts as *not* sole. The figure understates.
+
+**The invariant that caught it.** Id-only matching claimed 669. His taxa and other people's
+are both subsets of the county's, so `|his| + |others| - overlap` cannot exceed
+`|county|` - and 669 implies a union of 1,940 taxa inside an 1,896-taxon county. The
+lineage-aware 607 gives 1,880. `fetch_county.py` asserts this on every run; the guard was
+proven by deliberately reverting to id-only and confirming it exits non-zero.
+
+**Three API behaviours this depends on, all measured rather than assumed:**
+
+- `not_user_id` works and takes a numeric id only; `user_id` is silently ignored on
+  `species_counts` while `user_login` is honoured. Getting this wrong returns 0 results,
+  not an error.
+- **`ancestor_ids` ends with the taxon's own id.** Rolling counts up to ancestors *and*
+  adding the taxon separately double-counts everything. The first draft shipped exactly
+  that, turning 1 record into 2 and making four species look like Georgia endemics.
+- **`species_counts` reports leaf taxa only.** An observation identified no further than a
+  genus is absent from it entirely. Three of the four Lamar hickory records are genus-level
+  and do not appear, which is why the endpoint says the genus *Carya* has 1 county record
+  and 4 statewide where `/observations` returns 4 and 7,309.
+
+That last one is why **the tab lists species rank only**. 66 farm taxa resolve to a row
+above species and are excluded because their counts cannot be trusted; a further 93 have no
+county row at all (88 still `needs_id`) because they are partial identifications the
+species aggregation absorbs. Both counts are shown in the tab rather than dropped silently
+- the same treatment §11 gives the tree's stub nodes. The 855 species that remain were
+checked against `/observations` taxon by taxon, and 12 randomly sampled sole-observer
+claims verified with zero false positives.
+
+**Obscured species are never flagged sole.** iNaturalist hides the coordinates of
+collection-target species, and "the only record in the county" is a scarcity signal
+published beside a farm whose address is in the page header - the exact inference the
+obscuring exists to prevent. *Platanthera ciliaris*, the yellow fringed orchid, is the live
+case: iNat obscures it and Roy is its only Lamar observer. `obscured_taxa()` finds them and
+`build()` strips the flag. Three traps, all hit while writing it:
+
+- **The obscured-observation query returns whatever rank each record was identified to**,
+  including bare `Animalia`. Suppressing by lineage against that set removed **573 of 606**
+  sole taxa, because `Animalia` is an ancestor of nearly every insect on the farm. Hence
+  the species-or-finer filter, and a guard that exits rather than publish a gutted headline
+  when suppression exceeds 5% of the sole set.
+- **`taxon.conservation_status` (singular) and `taxon.threatened` are both null for the
+  orchid.** The signal lives in `conservation_statuses` (plural), whose global entry sets
+  `geoprivacy: "obscured"`. Testing the singular field let the one species that motivated
+  the guard straight through.
+- It only removes the *flag*. The species still appears in the tab with its counts; it is
+  no longer advertised as unique to this property.
+
+**A related caveat that predates this work:** because obscured coordinates are fuzzed,
+those records fall outside the 2 km farm query and never reach `farm_data.json` at all. The
+farm species list therefore under-reports obscured species - the orchid is in his Lamar
+County records but not in the farm snapshot. §11 covers coordinate *leakage*; this is the
+completeness side effect of the same mechanism.
+
+`county.json` also carries a `pool` of 861 taxa other people have recorded in the county
+and he has not. That is what the gap checklist's disabled county scope needs - but it has
+no family or order names attached, which the §7 interest weighting and the group filter
+both require, so enabling that option means resolving ancestry for the pool first.
+
+### 16.2 How much is left - Chao2
+
+`richness()` in `build_pages.py`, drawn as a dashed reference line and 95% band on the
+Overview accumulation curve.
+
+```
+q1, q2 = species recorded on exactly 1 and exactly 2 sampling DAYS
+S_est  = S_obs + ((m-1)/m) * q1(q1-1) / (2(q2+1))       bias-corrected Chao2
+```
+
+At this snapshot: 1,014 found of an estimated **2,181**, so **46%**, 95% interval
+1,961-2,452, from q1=697 and q2=206 across m=248 recording days.
+
+**The sampling unit is the day, not the observation.** That is the whole reason this is
+Chao2 rather than Chao1: one sheet night contributed 58 species on 2026-06-13, and
+abundance-based Chao1 would treat each photo as an independent draw. Both are computed
+because on this data they agree to within 0.9% (2,181 vs 2,162), which is useful evidence
+that the estimate is not an artefact of the choice.
+
+**It is a floor, not a forecast.** Chao estimators assume a closed population sampled at
+random. A working farm is not closed, and Roy photographs what interests him, at a light
+sheet, in warm weather. Both violations hide species rather than invent them, so the true
+richness is likely higher - which is what a Chao2 figure is formally defined to be, a lower
+bound. It says nothing about *when* anything will be found, which is why it is drawn as a
+flat band and never as an extrapolated curve. The bias-corrected form is used rather than
+the classic `q1^2/(2*q2)` so the cron cannot divide by zero in a future week.

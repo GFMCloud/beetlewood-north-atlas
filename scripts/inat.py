@@ -23,11 +23,29 @@ UA = "BeetlewoodAtlas/1.0 (personal project; github.com/gfmcloud/beetlewood-nort
 
 # ── farm scope - the single definition every script and doc refers to ──────────
 USER_LOGIN = "roymorrisii"
-USER_ID = 764712
+# Verified against GET /v1/users/roymorrisii on 2026-08-11. This was 764712 until then,
+# which is the id of his CSV *export job* (`observations764712.csv`), not of him. Nothing
+# read it, because every fetcher passes user_login - but the failure mode is silent and
+# nasty: species_counts?user_id=764712 returns 0 results rather than an error, so any
+# feature built on it would have looked correctly empty. Endpoints differ on which key
+# they honour, so prefer USER_LOGIN for filtering and USER_ID only where a numeric id is
+# required (`not_user_id` accepts no login form).
+USER_ID = 532376
 FARM_NAME = "Beetlewood Farms North"
 PLACE_GUESS = "376 Lamar County Line Rd, Griffin, GA"
 LAT = 33.18
 LNG = -84.20
+
+# ── administrative scope, for the county-records view ─────────────────────────
+# DERIVED, never guessed: fetch_county.py reads the place_ids off his own observations
+# and asserts these two match, so a wrong constant fails the run instead of quietly
+# describing the wrong county. The address is "376 Lamar County Line Rd" and the town is
+# Griffin, which is in Spalding - the farm is on the line and falls in LAMAR. An earlier
+# draft of tpl_atlas.html offered "Spalding County, GA" in the gap scope selector.
+COUNTY_PLACE_ID = 2527   # Lamar County, US, GA  (admin_level 20)
+COUNTY_NAME = "Lamar County"
+STATE_PLACE_ID = 23      # Georgia, US          (admin_level 10)
+STATE_NAME = "Georgia"
 
 # TWO DIFFERENT SCOPES. Conflating them silently redefines what "the farm" means.
 #
@@ -118,6 +136,71 @@ def get(path, params=None, retries=MAX_RETRIES, pace=True):
                   file=sys.stderr, flush=True)
             time.sleep(wait)
     raise RuntimeError(f"GET {url} failed after {retries} attempts: {last}")
+
+
+def species_counts(params, label="", page_cap=200):
+    """Page through /observations/species_counts and return {taxon_id: record}.
+
+    Deep paging is safe on this endpoint - verified 2026-08-11 by walking Georgia's 23,589
+    taxa to page 48 of 48 and getting a well-formed tail - so there is no 10k offset cliff
+    to work around here.
+
+    Returns {tid: {"count", "name", "common", "rank"}}. The dict, rather than the raw list,
+    is deliberate: callers compare these by SET MEMBERSHIP, not by count equality. iNat
+    aggregates these live, so two pulls seconds apart can disagree on a count by one or two
+    - comparing counts across two paged pulls invented 28 phantom results the first time it
+    was tried. Membership is stable; counts are for display.
+    """
+    out, page, expected = {}, 1, None
+    while True:
+        p = dict(params, per_page=COUNTS_PER_PAGE, page=page)
+        payload = get("/observations/species_counts", p)
+        results = payload.get("results") or []
+        if expected is None:
+            expected = payload.get("total_results") or 0
+        if not results:
+            break
+        for r in results:
+            t = r.get("taxon") or {}
+            if t.get("id") is None:
+                continue
+            out[t["id"]] = {
+                "count": r.get("count", 0),
+                "name": t.get("name") or "",
+                "common": t.get("preferred_common_name") or "",
+                "rank": t.get("rank") or "",
+                # carried so callers can colour by palette class without a taxonomy join
+                "iconic": t.get("iconic_taxon_name") or "Unknown",
+                # REQUIRED for any set comparison between two species_counts pulls.
+                # The endpoint reports the finest rank available *within each query*, so
+                # one observer's genus-level record and another's species-level record of
+                # the same lineage come back as two unrelated ids. Comparing ids alone
+                # then counts them as different taxa. See fetch_county.py:sole_observers.
+                "ancestors": tuple(t.get("ancestor_ids") or ()),
+            }
+        total = payload.get("total_results") or 0
+        if page * COUNTS_PER_PAGE >= total or page >= page_cap:
+            break
+        page += 1
+
+    # A SHORT WALK MUST FAIL LOUDLY. The loop above treats an empty page as end-of-data, so
+    # one transient 200-with-empty-body mid-walk silently returns a partial set. That is not
+    # symmetric in its consequences: callers subtracting one of these from another get a
+    # SMALLER subtrahend and therefore an INFLATED difference. For the county comparison a
+    # truncated "everyone but him" pull would overstate how much is uniquely his, and it
+    # would slip past the union invariant in fetch_county.py, which only catches the
+    # difference being too large relative to the county total, not both shrinking together.
+    # Tolerance rather than equality because the dict collapses any taxon iNat repeats
+    # across page boundaries, and because these aggregates shift between requests.
+    if expected and len(out) < expected * 0.98:
+        raise RuntimeError(
+            f"species_counts walk returned {len(out)} taxa but the API reported "
+            f"{expected} for {params}. Refusing a partial result - a short pull here "
+            f"inflates every difference computed against it."
+        )
+    if label:
+        print(f"  {label:34s} {len(out):>6} taxa")
+    return out
 
 
 def requests_made():

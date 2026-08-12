@@ -7,16 +7,18 @@ drifted into contradicting each other.
 
 ## What this is
 
-An interactive atlas over Roy F Morris II's (`roymorrisii`, user_id 764712) iNaturalist
-records, scoped to his ~6 acre farm in Griffin, GA. Roy is Graham's dad, an entomologist who
+An interactive atlas over Roy F Morris II's (`roymorrisii`, user_id 532376) iNaturalist
+records, scoped to his ~6 acre farm in Griffin, GA — which is in **Lamar** County, not
+Spalding, despite the Griffin address. Both identifiers were wrong in earlier drafts and
+both failed silently; BUILD_SPEC §1 records why. Roy is Graham's dad, an entomologist who
 specialises in longhorn beetles. Farm subset: ~1,400 observations / ~950 species / 2023-2026, and growing - he logs actively,
 so treat any exact count in the docs as a dated snapshot.
 His full account is 8,287 obs across several countries - **the account is not the farm**.
 
 ## State
 
-- `index.html` - **the product.** The assembled 5 tab atlas, generated. ~990 KB.
-- `scripts/` - a 5 step pipeline, all of it working. `scripts/README.md` documents it.
+- `index.html` - **the product.** The assembled 6 tab atlas, generated. ~1.1 MB.
+- `scripts/` - a 6 step pipeline, all of it working. `scripts/README.md` documents it.
 - `explore/` - two generated taxonomy views (explorer + sunburst), both rendering
   `data/tree_data.json`. Still shipped as standalone single-view pages; the atlas ports
   both into its Tree of Life tab rather than linking to them.

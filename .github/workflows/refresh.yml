@@ -60,6 +60,9 @@ jobs:
           echo "pull spends four minutes finding out."
           python3 scripts/fetch_observations.py --check
           python3 scripts/fetch_gap_pool.py --check
+          # Also asserts his records still fall in the county inat.py names, so a wrong
+          # constant fails here rather than describing the wrong county on the live site.
+          python3 scripts/fetch_county.py --check
 
       # Steps 0-5. Order matters: everything downstream reads farm_data.json and none of the
       # other scripts produce it. The taxonomy and taxa caches are committed to the repo, so a
@@ -83,6 +86,12 @@ jobs:
 
       - name: Step 4 - gap pool
         run: python3 scripts/fetch_gap_pool.py
+
+      # ~60 requests, the bulk of them paging Georgia's 23,589 taxa, so this is the
+      # slowest network step at roughly three minutes. It carries its own guards: the
+      # sole-observer union invariant, and a check that not_user_id still filters at all.
+      - name: Step 4b - county and statewide context
+        run: python3 scripts/fetch_county.py
 
       - name: Step 5 - build pages (offline-safety assertions)
         run: python3 scripts/build_pages.py
@@ -116,6 +125,7 @@ jobs:
           m = load('farm_data.json').get('meta', {})
           t = load('tree_data.json')
           g = load('gap_pool.json').get('meta', {})
+          c = load('county.json').get('meta', {})
           def n(v):
               return f'{v:,}' if isinstance(v, int) else '?'
           print('## Beetlewood refresh\n')
@@ -125,6 +135,7 @@ jobs:
           print(f"| Taxa in the tree | {n(t.get('tree', {}).get('d'))} |")
           print(f"| Life list | {n(m.get('life_list_species'))} |")
           print(f"| Nearby pool | {n(g.get('pool_size'))} |")
+          print(f"| Sole records in {c.get('county_name', 'the county')} | {n(c.get('sole_taxa'))} |")
           print(f"| Data generated | {m.get('generated', '?')} |")
           print('\nCounts move every run - Roy logs actively. What must hold is that the ')
           print('reconciliation assertions in step 3 passed, which they did or this ')

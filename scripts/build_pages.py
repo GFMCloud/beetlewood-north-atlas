@@ -53,9 +53,28 @@ PALETTE_CLASSES = ("Insecta", "Plantae", "Aves", "Fungi", "Arachnida",
 # somehow never logged this common thing" signal; 1.0 drifts plant-heavy.
 COUNT_EXP = 0.5
 
+# Ranks the county tab can show a trustworthy count for. Anything coarser is understated by
+# the species_counts endpoint (BUILD_SPEC section 16); anything finer is still a species
+# record and belongs in the list.
+SPECIES_OR_FINER = ("species", "subspecies", "variety", "form", "hybrid")
+
+# Which pipeline step produces each input, so a missing file names its own fix.
+PRODUCED_BY = {
+    "farm_data.json": "fetch_observations.py (step 0)",
+    "taxonomy.json": "fetch_taxonomy.py (step 1)",
+    "interest.json": "build_interest.py (step 2)",
+    "tree_data.json": "build_tree.py (step 3)",
+    "gap_pool.json": "fetch_gap_pool.py (step 4)",
+    "county.json": "fetch_county.py (step 4b)",
+}
+
 
 def load(name):
-    return json.loads((DATA / name).read_text())
+    p = DATA / name
+    if not p.exists():
+        sys.exit(f"ERROR: data/{name} is missing. Run scripts/{PRODUCED_BY.get(name, '?')} "
+                 f"first - see scripts/README.md for the step order.")
+    return json.loads(p.read_text())
 
 
 def dump(obj):
@@ -86,6 +105,82 @@ def accumulation(observations):
     if dated and pts and dated[-1]["d"] != pts[-1][0]:
         pts.append([dated[-1]["d"], len(seen)])
     return pts
+
+
+def richness(observations):
+    """Chao2 lower-bound estimate of how many species the property actually holds.
+
+    The accumulation curve shows what has been found. This estimates what is there, from
+    the shape of the rare tail: a survey still turning up many one-off species is nowhere
+    near done, and one where every species keeps reappearing is close to saturated.
+
+    SAMPLING UNIT IS THE DAY, NOT THE OBSERVATION - which is why this is Chao2 (incidence)
+    rather than Chao1 (abundance). Chao1 treats every record as an independent draw, and
+    these are not independent: one sheet night contributed 58 species on 2026-06-13, so
+    photographing the same moth twice that evening would count as evidence of commonness
+    when it is really one encounter. Collapsing to distinct days removes that
+    pseudo-replication. Both are emitted because on this data they agree to within 0.3%
+    (2,079 vs 2,072) - a useful signal that the estimate is not an artefact of the choice.
+
+        q1, q2 = species recorded on exactly 1 and exactly 2 days
+        S_est  = S_obs + ((m-1)/m) * q1(q1-1) / (2(q2+1))          bias-corrected Chao2
+
+    The bias-corrected form is used rather than the classic q1^2/(2*q2) because it stays
+    defined when q2 is 0, and the cron must not divide by zero in some future week.
+
+    WHAT THIS IS NOT. Chao estimators assume a closed community sampled at random. Neither
+    holds here: the farm exchanges species with everything around it, and Roy photographs
+    what interests him, at a light sheet, in the warm months. Both violations push the same
+    way - unsampled groups look absent rather than rare - so the estimate is a LOWER bound
+    on richness, which is what Chao2 is formally defined to be anyway. The template says so
+    in those words. Do not present it as a projection of what he will find.
+    """
+    sp = [o for o in observations if o.get("sci") and o.get("d")]
+    if not sp:
+        return None
+    by_day = collections.defaultdict(set)
+    for o in sp:
+        by_day[o["d"]].add(o["sci"])
+    m = len(by_day)
+    s_obs = len({o["sci"] for o in sp})
+    if m < 2:
+        return {"s_obs": s_obs, "days": m, "est": None}
+
+    incidence = collections.Counter()
+    for spp in by_day.values():
+        for name in spp:
+            incidence[name] += 1
+    q1 = sum(1 for v in incidence.values() if v == 1)
+    q2 = sum(1 for v in incidence.values() if v == 2)
+
+    r = (m - 1) / m
+    f0 = r * q1 * (q1 - 1) / (2 * (q2 + 1))       # estimated unseen species
+    est = s_obs + f0
+
+    # Chao (1987) variance for the bias-corrected estimator, and the log-normal interval
+    # that goes with it. A symmetric interval would put the lower bound below S_obs, which
+    # is nonsense - he has already seen that many.
+    var = (r * q1 * (q1 - 1) / (2 * (q2 + 1))
+           + r ** 2 * q1 * (2 * q1 - 1) ** 2 / (4 * (q2 + 1) ** 2)
+           + r ** 2 * q1 ** 2 * q2 * (q1 - 1) ** 2 / (4 * (q2 + 1) ** 4))
+    if f0 > 0 and var > 0:
+        k = math.exp(1.96 * math.sqrt(math.log(1 + var / f0 ** 2)))
+        lo, hi = s_obs + f0 / k, s_obs + f0 * k
+    else:
+        lo = hi = est
+
+    ab = collections.Counter(o["sci"] for o in sp)
+    f1 = sum(1 for v in ab.values() if v == 1)
+    f2 = sum(1 for v in ab.values() if v == 2)
+    chao1 = s_obs + f1 * (f1 - 1) / (2 * (f2 + 1))
+
+    return {
+        "s_obs": s_obs, "days": m, "q1": q1, "q2": q2,
+        "est": round(est), "lo": round(lo), "hi": round(hi),
+        "se": round(math.sqrt(var), 1),
+        "pct": round(100 * s_obs / est) if est else None,
+        "chao1": round(chao1),
+    }
 
 
 def phenology(observations):
@@ -158,6 +253,84 @@ def gap_rows(pool, farm, interest):
     return rows
 
 
+# ── county records ────────────────────────────────────────────────────────────
+def county_rows(county, farm):
+    """His farm taxa, with what each one is worth in county and state context.
+
+    MATCH ON ID **AND** NAME - the same rule the gap checklist follows for the same
+    structural reasons (BUILD_SPEC section 7).
+
+    THIS TAB COUNTS SPECIES, and two groups of farm taxa are therefore left out. Both are
+    partial identifications and both are excluded for one underlying reason: iNaturalist's
+    species_counts endpoint reports LEAF taxa only, so an observation identified no further
+    than a genus is not represented in it at all.
+
+      93 taxa have no county row. "Catocala sp." and friends - 87 still `needs_id`. A row
+         reading "Catocala: 1 county record, and it is his" would be false; the county has
+         plenty of Catocala, better identified.
+      65 taxa resolve to a row above species rank. Their counts cannot be trusted and were
+         measured wrong before this exclusion: the endpoint reports 1 county record and 4
+         statewide for the genus Carya, where the live observation search returns 4 and
+         7,309. Three of the four Lamar hickory records are identified only to genus and
+         simply do not appear in the species aggregation.
+
+    What survives is 797 species-rank rows whose counts are exact - verified taxon by taxon
+    against /observations, including 12 randomly sampled sole-observer claims that all held
+    (BUILD_SPEC section 16). Both excluded counts are surfaced in the tab so the drop is
+    visible rather than silent, the same treatment section 11 gives the tree's stub nodes.
+    """
+    farm_taxa = set(farm.get("farm_taxa") or [])
+    farm_names = set(farm.get("farm_names") or [])
+
+    rows, above_species = [], 0
+    for t in county["taxa"]:
+        if t["tid"] not in farm_taxa and t["name"] not in farm_names:
+            continue                       # his, and in this county, but not on the farm
+        # Species AND below. An observation identified to subspecies is more precise than
+        # one identified to species, not less, and `rank != "species"` would have filed it
+        # under "identified above species rank" and dropped it. The bucket is empty today -
+        # every non-species row is genus or coarser - but the first subspecies leaf would
+        # have been silently lost with a label saying the opposite of what happened.
+        if t.get("rank") not in SPECIES_OR_FINER:
+            above_species += 1
+            continue
+        rows.append({
+            "t": t["tid"], "n": t["name"], "cm": t.get("common") or "",
+            "rk": t.get("rank") or "", "pc": palette_class(t.get("iconic") or ""),
+            "ic": t.get("iconic") or "",
+            "r": t["r"], "c": t["c"], "s": t["s"], "so": t["sole"],
+        })
+    # sole records first, then scarcest statewide - the top of the list is the strongest
+    # claim the farm can make.
+    rows.sort(key=lambda r: (-r["so"], r["s"], r["n"]))
+
+    # Characterise what got dropped, so the tab can say what they are rather than just how
+    # many. Overwhelmingly these are partial IDs still awaiting a determination.
+    county_ids = {t["tid"] for t in county["taxa"]}
+    county_names = {t["name"] for t in county["taxa"]}
+    dropped = {}
+    for o in farm["observations"]:
+        if o.get("sci") and o["sci"] not in county_names and o.get("tid") not in county_ids:
+            dropped.setdefault(o["sci"], o)
+    needs_id = sum(1 for o in dropped.values() if o.get("q") == "needs_id")
+
+    cm = county["meta"]
+    return rows, {
+        "county_name": cm["county_name"], "state_name": cm["state_name"],
+        "county_taxa": cm["county_taxa"], "sole_taxa": cm["sole_taxa"],
+        "sole_id_only": cm.get("sole_taxa_id_only", 0),
+        "county_obs": cm["county_obs"], "his_county_obs": cm["his_county_obs"],
+        "his_county_taxa": len(county["taxa"]),
+        "state_taxa": cm["state_taxa"],
+        "matched": len(rows),
+        "no_county_row": len(dropped),
+        "no_county_row_needs_id": needs_id,
+        "above_species": above_species,
+        "sole_on_farm": sum(r["so"] for r in rows),
+        "generated": cm["generated"],
+    }
+
+
 def genus_class(observations, taxonomy):
     """genus name -> the iconic group its records sit under, so the interest tab can
     colour genus bars. Derived from the ancestry chain, exactly the way build_interest.py
@@ -178,8 +351,10 @@ def build_payload():
     gap = load("gap_pool.json")
     tree = load("tree_data.json")
     taxonomy = load("taxonomy.json")
+    county = load("county.json")
     observations = farm["observations"]
     rows = gap_rows(gap["pool"], farm, interest)
+    crows, cmeta = county_rows(county, farm)
     interest = dict(interest, genus_class=genus_class(observations, taxonomy))
 
     return {
@@ -187,7 +362,9 @@ def build_payload():
         "overview": {
             "accum": accumulation(observations),
             "classes": class_totals(observations),
+            "richness": richness(observations),
         },
+        "county": {"meta": cmeta, "rows": crows},
         "phenology": phenology(observations),
         "interest": interest,
         "gap": {

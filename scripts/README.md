@@ -8,6 +8,7 @@ python3 scripts/fetch_taxonomy.py       # 1. iNat API -> data/taxonomy.json     
 python3 scripts/build_interest.py       # 2. fold     -> data/interest.json     (offline)
 python3 scripts/build_tree.py           # 3. fold     -> data/tree_data.json    (offline)
 python3 scripts/fetch_gap_pool.py       # 4. iNat API -> data/gap_pool.json     (network)
+python3 scripts/fetch_county.py         # 4b. iNat API -> data/county.json      (network)
 python3 scripts/build_pages.py          # 5. inline   -> index.html + explore/  (offline)
 ```
 
@@ -55,9 +56,26 @@ across 5 ranks; the counts grow as Roy logs. What matters is that the assertions
 counts, plus resolved order and family names. Ancestor names come from `taxonomy.json` where
 already known and a batched `/taxa` lookup otherwise, cached in `taxa_cache.json`.
 
+**4b. `fetch_county.py`** - the county and statewide context behind the County Records tab:
+how many observers besides Roy have ever recorded each of his species in Lamar County, and
+how scarce it is across Georgia. The slowest network step at ~60 requests and ~3 minutes,
+almost all of it paging Georgia's 23,589 taxa.
+
+Three things about it are load-bearing and easy to undo by accident, all covered in
+BUILD_SPEC §16. **Sole-observer status is decided by comparing lineages, not taxon ids** -
+`species_counts` reports the finest rank per query, so ids alone counted one lineage as two
+and claimed 667 sole records against the real 606. The script asserts a union invariant that
+catches exactly that. **`ancestor_ids` includes the taxon's own id**, so rolling counts up to
+ancestors must not also add the taxon separately or every record is counted twice. And
+**`species_counts` reports leaf taxa only**, which is why the tab lists species rank alone -
+genus rows would understate, badly.
+
+    python3 scripts/fetch_county.py --check     # also asserts the county constants
+
 **5. `build_pages.py`** - inlines data and vendored D3 into the templates, and builds the
 product: `index.html`, the assembled atlas. The two `explore/` pages are still generated as
-standalone single-view files.
+standalone single-view files. `richness()` here computes the Chao2 estimate drawn on the
+accumulation curve; `county_rows()` joins `county.json` to the farm taxa.
 
 It does **not** just dump the JSONs into the page. `farm_data.json` is 550 KB and the atlas
 needs four fields of it; the gap subtraction needs 4,381 life-list ids the browser would only
