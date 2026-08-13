@@ -3,6 +3,7 @@ __pycache__/
 .DS_Store
 shots/
 *.tar.gz
+.wrangler/
 
 # NEVER COMMIT THE iNat CSV EXPORT. An own-account export carries private_latitude,
 # private_longitude and private_place_guess, populated for every observation iNaturalist
