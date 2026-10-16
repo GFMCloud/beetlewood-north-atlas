@@ -3,9 +3,7 @@ General working agreements live in ~/.claude/CLAUDE.md. This file adds only what
 # Beetlewood Farms North Atlas
 
 Auto-loaded context for Claude Code. **`BUILD_SPEC.md` is the single source of truth** for
-decisions, data model, formulas and hosting. Read it before writing code. There is no
-`HANDOFF.md` any more - it was merged into BUILD_SPEC on 2026-07-31 because the two docs had
-drifted into contradicting each other.
+decisions, data model, formulas and hosting. Read it before writing code.
 
 ## What this is
 
@@ -19,7 +17,7 @@ His full account is 8,287 obs across several countries - **the account is not th
 
 ## State
 
-- `index.html` - **the product.** The assembled 6 tab atlas, generated. ~1.1 MB.
+- `index.html` - **the product.** The assembled 6 tab atlas, generated. Over 1 MB.
 - `scripts/` - a 6 step pipeline, all of it working. `scripts/README.md` documents it.
 - `explore/` - two generated taxonomy views (explorer + sunburst), both rendering
   `data/tree_data.json`. Still shipped as standalone single-view pages; the atlas ports
@@ -40,9 +38,10 @@ BUILD_SPEC § "State of the build" has the detail.
    The one exception is taxon photos, which are remote iNat URLs with a graceful
    "photo offline" fallback. Keep that fallback. The iNat API itself is public read - no
    credentials exist to handle.
-2. **Do not read the big generated files - read the templates.** `index.html` is ~1144 KB
-   (~1.1 MB), `explore/sunburst-zoom.html` 646 KB, `explorer-2pane.html` 376 KB,
-   `wireframe/index.html` 466 KB, and almost all of that is inlined JSON and vendored D3
+2. **Do not read the big generated files - read the templates.** `index.html`,
+   `explore/sunburst-zoom.html`, `explore/explorer-2pane.html` and `wireframe/index.html` run
+   from several hundred KB to over 1 MB (check with `ls -l`), and almost all of that is
+   inlined JSON and vendored D3
    you already have in `data/` and `scripts/vendor/`. Opening one whole burns a large
    slice of context on a blob you can query with two lines of Python. Read
    `scripts/templates/*.html` instead - `tpl_atlas.html` is the whole app at ~92 KB, the
@@ -51,7 +50,8 @@ BUILD_SPEC § "State of the build" has the detail.
    the wireframe, grep out the structure rather than reading it end to end.
 3. **Palette is fixed and validated.** Reference the `--c-<Class>` custom properties, never
    raw hex. Colour follows the iconic class, never the rank. BUILD_SPEC §9 is the complete
-   chart convention - there is no `dataviz` skill in this repo, so do not go hunting for one.
+   chart convention, and here it overrides the global rule that `dataviz` owns every chart
+   and its colors win.
 4. **Totals must reconcile.** `build_tree.py` asserts every parent equals the sum of its
    children. Do not relax those assertions to make a change pass.
 5. **Headless browser needed for screenshot verification.** Not installed by default.
